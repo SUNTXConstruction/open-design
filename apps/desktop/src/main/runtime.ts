@@ -632,22 +632,31 @@ function ensureWindowVisible(window: BrowserWindow): void {
  * {@link hideWindowExitingFullscreen} — declared structurally so the
  * helper can be exercised with a plain mock in unit tests without
  * standing up an actual Electron window.
+ *
+ * `isEnteringFullscreen` covers the Electron-asynchronous gap between
+ * the renderer asking for fullscreen and the OS confirming via
+ * 'enter-full-screen': the caller is expected to track this from the
+ * window's enter/leave listeners (see the close handler in
+ * {@link configureWindow}) and surface it here.
  */
 export type WindowFullscreenSurface = {
   hide: () => void;
   isFullScreen: () => boolean;
   isSimpleFullScreen: () => boolean;
+  isEnteringFullscreen: () => boolean;
   setFullScreen: (flag: boolean) => void;
   setSimpleFullScreen: (flag: boolean) => void;
-  once: (event: 'leave-full-screen', listener: () => void) => unknown;
+  once: (event: 'enter-full-screen' | 'leave-full-screen', listener: () => void) => unknown;
 };
 
 /**
  * Hide the window, first leaving any active fullscreen so macOS doesn't
  * orphan the fullscreen Space as a black screen. The hide is deferred
- * until 'leave-full-screen' fires; otherwise hiding races the OS Space
- * teardown and the user is left staring at a black desktop until they
- * switch Spaces by hand.
+ * until 'leave-full-screen' fires; if the Space transition is still
+ * flipping in (`isEnteringFullscreen`), defer further until
+ * 'enter-full-screen' settles before starting the exit. Plain hides
+ * race the OS Space teardown and leave the user staring at a black
+ * desktop until they switch Spaces by hand.
  */
 export function hideWindowExitingFullscreen(window: WindowFullscreenSurface): void {
   if (window.isSimpleFullScreen()) {
@@ -658,6 +667,13 @@ export function hideWindowExitingFullscreen(window: WindowFullscreenSurface): vo
   if (window.isFullScreen()) {
     window.once('leave-full-screen', () => window.hide());
     window.setFullScreen(false);
+    return;
+  }
+  if (window.isEnteringFullscreen()) {
+    window.once('enter-full-screen', () => {
+      window.once('leave-full-screen', () => window.hide());
+      window.setFullScreen(false);
+    });
     return;
   }
   window.hide();
@@ -903,10 +919,43 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
   });
 
   if (process.platform === "darwin") {
+    // Track the in-flight fullscreen-enter window so the close handler can
+    // tell mid-transition apart from "definitely not fullscreen". HTML
+    // requestFullscreen() emits enter-html-full-screen on webContents
+    // before the OS Space transition completes; the BrowserWindow
+    // enter-full-screen event fires once the OS confirms.
+    let enteringFullscreen = false;
+    window.webContents.on("enter-html-full-screen", () => {
+      enteringFullscreen = true;
+    });
+    window.webContents.on("leave-html-full-screen", () => {
+      enteringFullscreen = false;
+    });
+    window.on("enter-full-screen", () => {
+      enteringFullscreen = false;
+    });
+    window.on("leave-full-screen", () => {
+      enteringFullscreen = false;
+    });
     window.on("close", (event) => {
       if (stopped) return;
       event.preventDefault();
-      hideWindowExitingFullscreen(window);
+      hideWindowExitingFullscreen({
+        hide: () => window.hide(),
+        isFullScreen: () => window.isFullScreen(),
+        isSimpleFullScreen: () => window.isSimpleFullScreen(),
+        isEnteringFullscreen: () => enteringFullscreen,
+        setFullScreen: (flag) => window.setFullScreen(flag),
+        setSimpleFullScreen: (flag) => window.setSimpleFullScreen(flag),
+        // BrowserWindow.once is heavily overloaded; both event names are
+        // valid (BrowserWindow emits enter-full-screen and
+        // leave-full-screen on macOS) but TypeScript can't pick a single
+        // overload for the union, so narrow at the call site.
+        once: (event, listener) =>
+          event === 'enter-full-screen'
+            ? window.once('enter-full-screen', listener)
+            : window.once('leave-full-screen', listener),
+      });
     });
   }
 
