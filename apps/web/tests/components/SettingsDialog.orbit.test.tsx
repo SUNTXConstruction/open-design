@@ -848,7 +848,14 @@ describe('SettingsDialog Orbit connector gate refresh', () => {
 
     render(
       <SettingsDialog
-        initial={{ ...baseConfig, orbit: { ...baseConfig.orbit, templateSkillId: 'orbit-editorial' } }}
+        initial={{
+          ...baseConfig,
+          orbit: {
+            enabled: baseConfig.orbit?.enabled ?? false,
+            time: baseConfig.orbit?.time ?? '09:00',
+            templateSkillId: 'orbit-editorial',
+          },
+        }}
         agents={[]}
         daemonLive
         appVersionInfo={null}
