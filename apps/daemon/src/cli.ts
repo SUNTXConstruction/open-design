@@ -148,6 +148,26 @@ const PROJECT_STRING_FLAGS = new Set([
   'agent', 'model', 'snapshot-id', 'inputs', 'grant-caps',
 ]);
 const PROJECT_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'follow']);
+// `od automation …` mirrors the Automations tab. Same surface, same
+// /api/routines store. The CLI form is the embeddability contract:
+// external agents (hermes-agent, openclaw, etc.) can drive Open Design
+// automations headlessly without going through the web UI.
+const AUTOMATION_STRING_FLAGS = new Set([
+  'daemon-url', 'name', 'prompt', 'prompt-file', 'schedule', 'target',
+  'project', 'skill', 'agent', 'limit',
+]);
+const AUTOMATION_BOOLEAN_FLAGS = new Set([
+  'help', 'h', 'json', 'disabled', 'enabled',
+]);
+// Hoisted because `runAutomation` is reachable through the top-of-file
+// SUBCOMMAND_MAP dispatch, which runs during module evaluation —
+// any `const` declared further down would still be in TDZ when
+// `parseScheduleFlag` reads this map. Same reason the other dispatch-
+// touched constants live near the top.
+const AUTOMATION_WEEKDAY_TOKENS = {
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+};
 const RECOVERABLE_EXIT_CODES = {
   'daemon-not-running':       64,
   'plugin-not-found':         65,
@@ -178,6 +198,8 @@ const SUBCOMMAND_MAP = {
   ui: runUi,
   marketplace: runMarketplace,
   project: runProject,
+  automation: runAutomation,
+  automations: runAutomation,
   run: runRun,
   files: runFiles,
   conversation: runConversation,
@@ -314,6 +336,12 @@ function printRootHelp() {
 
   od plugin <list|info|install|uninstall|apply|doctor|replay|trust> [args]
       Discover, install, and apply plugins through the local daemon.
+
+  od automation <list|get|create|update|run|runs|pause|resume|delete> [args]
+      Drive the Automations surface headlessly. Same store as the UI's
+      Automations tab, so an external agent (hermes, openclaw, ...) can
+      schedule, trigger, or harvest results from a routine without
+      opening the web UI.
 
   od ui <list|show|respond|revoke|prefill> [args]
       Read and answer GenUI surfaces (form / choice / confirmation / oauth-prompt) headlessly.
@@ -4731,6 +4759,453 @@ Common options:
     }
     default:
       console.error(`unknown subcommand: od config ${sub}`);
+      process.exit(2);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: od automation …
+//
+// Headless surface for the Automations tab. This is the dual-track contract:
+// every capability the Automations UI exposes is reachable here so an
+// external agent (hermes-agent, openclaw, custom Slackbot, etc.) can run
+// the full lifecycle — list, create, fire, harvest, retire — without
+// rendering a page. Storage is /api/routines on the local daemon; the
+// "routine" name is the implementation detail, "automation" is the user-
+// facing surface.
+// ---------------------------------------------------------------------------
+
+function parseScheduleFlag(raw) {
+  if (!raw || typeof raw !== 'string') {
+    throw new Error(
+      '--schedule is required. Forms: hourly:<minute> | daily:HH:MM[:TZ] | weekdays:HH:MM[:TZ] | weekly:DAY:HH:MM[:TZ]',
+    );
+  }
+  const parts = raw.split(':');
+  const kind = parts[0];
+  if (kind === 'hourly') {
+    const minute = Number(parts[1]);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      throw new Error('--schedule hourly requires :<minute>, 0-59');
+    }
+    return { kind: 'hourly', minute };
+  }
+  if (kind === 'daily' || kind === 'weekdays') {
+    if (parts.length < 3) {
+      throw new Error(`--schedule ${kind} requires :HH:MM[:TZ]`);
+    }
+    const hh = parts[1];
+    const mm = parts[2];
+    const time = `${hh.padStart(2, '0')}:${mm.padStart(2, '0')}`;
+    if (!/^[0-2]\d:[0-5]\d$/.test(time)) {
+      throw new Error(`--schedule ${kind} time must be HH:MM (24h)`);
+    }
+    const timezone = parts.slice(3).join(':') || 'UTC';
+    return { kind, time, timezone };
+  }
+  if (kind === 'weekly') {
+    if (parts.length < 4) {
+      throw new Error('--schedule weekly requires :DAY:HH:MM[:TZ] (DAY is 0-6 or sun/mon/...)');
+    }
+    const dayToken = String(parts[1]).toLowerCase();
+    let weekday;
+    if (/^[0-6]$/.test(dayToken)) {
+      weekday = Number(dayToken);
+    } else if (AUTOMATION_WEEKDAY_TOKENS[dayToken] !== undefined) {
+      weekday = AUTOMATION_WEEKDAY_TOKENS[dayToken];
+    } else {
+      throw new Error(`--schedule weekly day must be 0-6 or sun..sat (got "${parts[1]}")`);
+    }
+    const time = `${parts[2].padStart(2, '0')}:${parts[3].padStart(2, '0')}`;
+    if (!/^[0-2]\d:[0-5]\d$/.test(time)) {
+      throw new Error('--schedule weekly time must be HH:MM (24h)');
+    }
+    const timezone = parts.slice(4).join(':') || 'UTC';
+    return { kind: 'weekly', weekday, time, timezone };
+  }
+  throw new Error(`--schedule kind must be hourly|daily|weekdays|weekly (got "${kind}")`);
+}
+
+function parseAutomationTarget(flags) {
+  const raw = flags.target;
+  if (raw == null) {
+    if (flags.project) return { mode: 'reuse', projectId: String(flags.project) };
+    return { mode: 'create_each_run' };
+  }
+  const value = String(raw);
+  if (value === 'worktree' || value === 'create-each-run' || value === 'create_each_run') {
+    return { mode: 'create_each_run' };
+  }
+  if (value === 'reuse') {
+    if (!flags.project) {
+      throw new Error('--target reuse needs --project <id>');
+    }
+    return { mode: 'reuse', projectId: String(flags.project) };
+  }
+  const eq = value.indexOf('=');
+  if ((value.startsWith('reuse=') || value.startsWith('reuse:')) && eq > 0) {
+    const projectId = value.slice(eq + 1).trim();
+    if (!projectId) throw new Error('--target reuse=<projectId> needs a non-empty id');
+    return { mode: 'reuse', projectId };
+  }
+  throw new Error(
+    `--target must be "worktree" or "reuse=<projectId>" (got "${value}")`,
+  );
+}
+
+function describeAutomationScheduleForCli(schedule) {
+  if (!schedule) return '-';
+  if (schedule.kind === 'hourly') {
+    return `hourly:${String(schedule.minute).padStart(2, '0')}`;
+  }
+  if (schedule.kind === 'weekly') {
+    const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    return `weekly:${days[schedule.weekday] ?? schedule.weekday}:${schedule.time}:${schedule.timezone}`;
+  }
+  return `${schedule.kind}:${schedule.time}:${schedule.timezone}`;
+}
+
+function describeAutomationTargetForCli(target) {
+  if (!target) return '-';
+  if (target.mode === 'reuse') return `reuse=${target.projectId}`;
+  return 'worktree';
+}
+
+function formatAutomationRow(r) {
+  const next = r.nextRunAt
+    ? new Date(r.nextRunAt).toISOString()
+    : (r.enabled ? '-' : 'paused');
+  return [
+    r.id,
+    r.name,
+    describeAutomationScheduleForCli(r.schedule),
+    describeAutomationTargetForCli(r.target),
+    r.enabled ? 'enabled' : 'paused',
+    next,
+  ].join('\t');
+}
+
+async function readPromptFromFlags(flags) {
+  if (typeof flags.prompt === 'string' && flags.prompt.length > 0) {
+    return flags.prompt;
+  }
+  if (typeof flags['prompt-file'] === 'string' && flags['prompt-file'].length > 0) {
+    const path = flags['prompt-file'];
+    if (path === '-') {
+      return await new Promise((resolve, reject) => {
+        let buf = '';
+        process.stdin.setEncoding('utf8');
+        process.stdin.on('data', (chunk) => { buf += chunk; });
+        process.stdin.on('end', () => resolve(buf));
+        process.stdin.on('error', reject);
+      });
+    }
+    const { readFile } = await import('node:fs/promises');
+    return await readFile(path, 'utf8');
+  }
+  return null;
+}
+
+function printAutomationHelp() {
+  console.log(`Usage:
+  od automation list                                         List automations.
+  od automation get <id>                                     Print one automation.
+  od automation create --name "<title>" --prompt "<text>"
+                       --schedule <spec>
+                       [--target worktree|reuse=<projectId>]
+                       [--disabled] [--json]
+                       [--prompt-file <path|->] (alternative to --prompt)
+                       [--skill <id>] [--agent <id>]
+  od automation update <id> [--name ...] [--prompt ...]
+                            [--schedule ...] [--target ...]
+                            [--enabled|--disabled]              Patch fields.
+  od automation run <id>                                       Trigger a manual run; prints projectId/conversationId.
+  od automation runs <id> [--limit 10]                         Print run history.
+  od automation pause <id>                                     Mark disabled.
+  od automation resume <id>                                    Mark enabled.
+  od automation delete <id>                                    Remove the automation (history retained).
+
+Schedule formats:
+  hourly:<minute>                    Every hour at :MM.
+  daily:HH:MM[:TZ]                   Daily at HH:MM in TZ (default UTC).
+  weekdays:HH:MM[:TZ]                Mon-Fri at HH:MM.
+  weekly:DAY:HH:MM[:TZ]              DAY = 0-6 or sun|mon|...|sat.
+
+Output:
+  Plain text: tab-separated rows for list, human-readable lines for get / runs.
+  --json     Raw JSON for any subcommand.
+  Designed so external agents (hermes-agent, openclaw, scripted jobs)
+  can drive the full automation lifecycle headlessly.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base.`);
+}
+
+async function runAutomation(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    printAutomationHelp();
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  let flags;
+  try {
+    flags = parseFlags(rest, {
+      string: AUTOMATION_STRING_FLAGS,
+      boolean: AUTOMATION_BOOLEAN_FLAGS,
+    });
+  } catch (err) {
+    console.error(err.message);
+    process.exit(2);
+  }
+  const base = await cliDaemonBaseUrl(flags);
+
+  const writeJson = (data) =>
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+
+  const requireId = (label) => {
+    const id = rest.find((a) => !a.startsWith('-'));
+    if (!id) {
+      console.error(`Usage: od automation ${label} <id>`);
+      process.exit(2);
+    }
+    return id;
+  };
+
+  switch (sub) {
+    case 'list': {
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/routines`);
+      } catch (err) {
+        surfaceFetchError(err, base);
+        process.exit(3);
+      }
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return writeJson(data);
+      const routines = data.routines ?? [];
+      if (routines.length === 0) {
+        console.log('No automations. Create one with `od automation create --name "..." --prompt "..." --schedule daily:09:00`.');
+        return;
+      }
+      console.log('# id\tname\tschedule\ttarget\tstatus\tnextRun');
+      for (const r of routines) console.log(formatAutomationRow(r));
+      return;
+    }
+    case 'get': {
+      const id = requireId('get');
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/routines/${encodeURIComponent(id)}`);
+      } catch (err) {
+        surfaceFetchError(err, base);
+        process.exit(3);
+      }
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return writeJson(data);
+      writeJson(data.routine ?? data);
+      return;
+    }
+    case 'runs': {
+      const id = requireId('runs');
+      const limit = Number(flags.limit) > 0 ? Number(flags.limit) : 20;
+      let resp;
+      try {
+        resp = await fetch(
+          `${base}/api/routines/${encodeURIComponent(id)}/runs?limit=${limit}`,
+        );
+      } catch (err) {
+        surfaceFetchError(err, base);
+        process.exit(3);
+      }
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return writeJson(data);
+      const runs = data.runs ?? [];
+      if (runs.length === 0) {
+        console.log(`No runs yet for ${id}.`);
+        return;
+      }
+      console.log('# runId\tstatus\ttrigger\tstartedAt\tprojectId\tconversationId');
+      for (const r of runs) {
+        console.log([
+          r.id,
+          r.status,
+          r.trigger,
+          new Date(r.startedAt).toISOString(),
+          r.projectId,
+          r.conversationId,
+        ].join('\t'));
+      }
+      return;
+    }
+    case 'create': {
+      const name = typeof flags.name === 'string' ? flags.name.trim() : '';
+      if (!name) {
+        console.error('--name is required');
+        process.exit(2);
+      }
+      const prompt = (await readPromptFromFlags(flags)) || '';
+      if (!prompt.trim()) {
+        console.error('--prompt or --prompt-file is required');
+        process.exit(2);
+      }
+      let schedule;
+      let target;
+      try {
+        schedule = parseScheduleFlag(flags.schedule);
+        target = parseAutomationTarget(flags);
+      } catch (err) {
+        console.error(err.message);
+        process.exit(2);
+      }
+      const body = {
+        name,
+        prompt: prompt.trim(),
+        schedule,
+        target,
+        enabled: !flags.disabled,
+      };
+      if (flags.skill) body.skillId = String(flags.skill);
+      if (flags.agent) body.agentId = String(flags.agent);
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/routines`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        surfaceFetchError(err, base);
+        process.exit(3);
+      }
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error(`POST /api/routines failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      if (flags.json) return writeJson(data);
+      console.log(`[automation] created ${data.routine?.id}`);
+      console.log(formatAutomationRow(data.routine));
+      return;
+    }
+    case 'update': {
+      const id = requireId('update');
+      const patch = {};
+      if (typeof flags.name === 'string') patch.name = flags.name.trim();
+      const promptPatch = await readPromptFromFlags(flags);
+      if (promptPatch != null) patch.prompt = promptPatch.trim();
+      if (flags.schedule) {
+        try {
+          patch.schedule = parseScheduleFlag(flags.schedule);
+        } catch (err) {
+          console.error(err.message);
+          process.exit(2);
+        }
+      }
+      if (flags.target || flags.project) {
+        try {
+          patch.target = parseAutomationTarget(flags);
+        } catch (err) {
+          console.error(err.message);
+          process.exit(2);
+        }
+      }
+      if (flags.disabled) patch.enabled = false;
+      if (flags.enabled) patch.enabled = true;
+      if (Object.keys(patch).length === 0) {
+        console.error('update needs at least one of --name --prompt(--prompt-file) --schedule --target --enabled --disabled');
+        process.exit(2);
+      }
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/routines/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(patch),
+        });
+      } catch (err) {
+        surfaceFetchError(err, base);
+        process.exit(3);
+      }
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error(`PATCH /api/routines/${id} failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      if (flags.json) return writeJson(data);
+      console.log(`[automation] updated ${id}`);
+      console.log(formatAutomationRow(data.routine));
+      return;
+    }
+    case 'pause':
+    case 'resume': {
+      const id = requireId(sub);
+      const enabled = sub === 'resume';
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/routines/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        });
+      } catch (err) {
+        surfaceFetchError(err, base);
+        process.exit(3);
+      }
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error(`PATCH /api/routines/${id} failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      if (flags.json) return writeJson(data);
+      console.log(`[automation] ${sub}d ${id}`);
+      return;
+    }
+    case 'run': {
+      const id = requireId('run');
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/routines/${encodeURIComponent(id)}/run`, {
+          method: 'POST',
+        });
+      } catch (err) {
+        surfaceFetchError(err, base);
+        process.exit(3);
+      }
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok && resp.status !== 202) {
+        console.error(`POST /api/routines/${id}/run failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      if (flags.json) return writeJson(data);
+      console.log(`[automation] triggered ${id}`);
+      if (data.projectId) console.log(`projectId\t${data.projectId}`);
+      if (data.conversationId) console.log(`conversationId\t${data.conversationId}`);
+      if (data.agentRunId) console.log(`agentRunId\t${data.agentRunId}`);
+      return;
+    }
+    case 'delete': {
+      const id = requireId('delete');
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/routines/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        surfaceFetchError(err, base);
+        process.exit(3);
+      }
+      if (!resp.ok) return structuredHttpFailure(resp);
+      if (flags.json) return writeJson({ ok: true, id });
+      console.log(`[automation] deleted ${id}`);
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od automation ${sub}`);
+      printAutomationHelp();
       process.exit(2);
   }
 }
