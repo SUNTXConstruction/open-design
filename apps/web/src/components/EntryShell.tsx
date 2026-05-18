@@ -57,6 +57,7 @@ import type {
   PluginShareProjectOutcome,
 } from '../state/projects';
 import { TasksView } from './TasksView';
+import { Toast } from './Toast';
 
 // The topbar chips (GitHub star, model switcher, Use everywhere)
 // collapse into the settings dropdown when the viewport gets
@@ -104,6 +105,28 @@ function defaultPluginInputsForCreate(
     style,
     ...(aspect ? { aspect } : {}),
   };
+}
+
+function formatPickAndImportErrorDetails(details: unknown): string | undefined {
+  if (typeof details === 'string' && details.length > 0) return details;
+  if (details == null || typeof details !== 'object') return undefined;
+  const record = details as Record<string, unknown>;
+  const error = record.error;
+  if (error != null && typeof error === 'object') {
+    const errRecord = error as Record<string, unknown>;
+    const message = errRecord.message;
+    const nestedDetails = errRecord.details;
+    if (typeof message === 'string' && message.length > 0) {
+      if (nestedDetails != null && typeof nestedDetails === 'object') {
+        const nestedReason = (nestedDetails as Record<string, unknown>).reason;
+        if (typeof nestedReason === 'string' && nestedReason.length > 0) {
+          return `${message} (${nestedReason})`;
+        }
+      }
+      return message;
+    }
+  }
+  return undefined;
 }
 
 // Theme options exposed in the avatar-popover appearance submenu.
@@ -294,6 +317,10 @@ export function EntryShell({
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectInitialTab, setNewProjectInitialTab] =
     useState<CreateTab>('prototype');
+  const [folderImportError, setFolderImportError] = useState<{
+    message: string;
+    details?: string;
+  } | null>(null);
   const [integrationTab, setIntegrationTab] = useState<IntegrationTab>(integrationInitialTab);
   const [homePromptHandoff, setHomePromptHandoff] = useState<HomePromptHandoff | null>(null);
   const avatarMenuRef = useRef<HTMLDivElement | null>(null);
@@ -432,6 +459,17 @@ export function EntryShell({
         await onImportFolderResponse(result.response);
         return;
       }
+      const reason = 'reason' in result && typeof result.reason === 'string'
+        ? result.reason
+        : 'unknown failure';
+      const details = 'details' in result && result.details != null
+        ? formatPickAndImportErrorDetails(result.details)
+        : undefined;
+      setFolderImportError({
+        message: `Open folder failed: ${reason}`,
+        ...(details ? { details } : {}),
+      });
+      return;
     }
     openNewProject('prototype');
   }
@@ -838,6 +876,14 @@ export function EntryShell({
         }}
         onClose={() => setNewProjectOpen(false)}
       />
+      {folderImportError ? (
+        <Toast
+          message={folderImportError.message}
+          details={folderImportError.details ?? null}
+          role="alert"
+          onDismiss={() => setFolderImportError(null)}
+        />
+      ) : null}
     </div>
   );
 }
