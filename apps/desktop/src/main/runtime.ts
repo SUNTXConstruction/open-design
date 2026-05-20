@@ -685,7 +685,23 @@ function createDesktopPetWindow(preloadPath: string): BrowserWindow {
     },
   });
   petWindow.setAlwaysOnTop(true, "floating");
-  petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // `skipTransformProcessType: true` is load-bearing, not an
+  // optimization. By default Electron's macOS `setVisibleOnAllWorkspaces`
+  // transforms the whole *process* type between `UIElementApplication`
+  // and `ForegroundApplication` to apply the all-Spaces behavior — the
+  // Electron docs note this "will hide the window and dock for a short
+  // time". That round-trip races during the launch burst (the pet
+  // window is created alongside the main window) and on Electron 41 /
+  // macOS 26 the process can stay stuck as an accessory app: no Dock
+  // icon, no menu bar, even though the windows render fine (issue
+  // #2394). The desktop pet is a cosmetic companion window; it must
+  // never decide the app's Dock identity — the main window does.
+  // Skipping the transform keeps the app a regular Dock app; the pet
+  // still floats on every Space via its `alwaysOnTop` floating level.
+  petWindow.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+    skipTransformProcessType: true,
+  });
   petWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isHttpUrl(url)) void shell.openExternal(url);
     return { action: "deny" };
