@@ -5407,7 +5407,7 @@ function HtmlViewer({
   function activateCommentTool() {
     fireArtifactToolbarClick('comment');
     capturePreviewScrollPosition();
-    if (boardMode) {
+    if (boardMode && boardTool === 'inspect') {
       setBoardMode(false);
       clearBoardComposer();
       setAgentToolsOpen(false);
@@ -5418,7 +5418,7 @@ function HtmlViewer({
       setInspectMode(false);
       setDrawOverlayOpen(false);
       setMode('preview');
-      activateBoard(boardTool);
+      activateBoard('inspect');
       closeArtifactToolMenus();
     };
     if (manualEditMode) {
@@ -5708,16 +5708,16 @@ function HtmlViewer({
               <div className="artifact-tool-menu-anchor">
                 <button
                   type="button"
-                  className={`viewer-action viewer-action-icon viewer-comment-toggle${boardMode ? ' active' : ''}`}
+                  className={`viewer-action viewer-action-icon viewer-comment-toggle${boardMode && boardTool === 'inspect' ? ' active' : ''}`}
                   data-testid="board-mode-toggle"
                   data-tooltip={t('fileViewer.comment')}
                   title={t('fileViewer.comment')}
                   aria-label={t('fileViewer.comment')}
-                  aria-pressed={boardMode}
+                  aria-pressed={boardMode && boardTool === 'inspect'}
                   onClick={activateCommentTool}
                 >
                   <Icon name="comment" size={14} />
-                  {boardMode ? <span className="viewer-action-active-dot" aria-hidden /> : null}
+                  {boardMode && boardTool === 'inspect' ? <span className="viewer-action-active-dot" aria-hidden /> : null}
                 </button>
               </div>
               <div className="artifact-tool-menu-anchor">
@@ -5739,19 +5739,6 @@ function HtmlViewer({
                 </button>
                 {agentToolsOpen ? (
                   <div className="artifact-tool-menu" role="menu" aria-label="More annotation tools">
-                    <button
-                      className={`artifact-tool-menu-item${boardMode && boardTool === 'inspect' ? ' active' : ''}`}
-                      type="button"
-                      data-testid="comment-mode-toggle"
-                      title="Pick one element"
-                      role="menuitem"
-                      aria-label="Pick element"
-                      aria-pressed={boardMode && boardTool === 'inspect'}
-                      onClick={() => activateBoardPicker('inspect')}
-                    >
-                      <Icon name="edit" size={13} />
-                      <span>Pick element</span>
-                    </button>
                     <button
                       className={`artifact-tool-menu-item${boardMode && boardTool === 'pod' ? ' active' : ''}`}
                       type="button"
@@ -5900,10 +5887,10 @@ function HtmlViewer({
           {!showPreviewToolbarControls ? (
             <button
               type="button"
-              className={`viewer-action viewer-comment-toggle${boardMode ? ' active' : ''}`}
+              className={`viewer-action viewer-comment-toggle${boardMode && boardTool === 'inspect' ? ' active' : ''}`}
               data-testid="board-mode-toggle"
               title={t('fileViewer.comment')}
-              aria-pressed={boardMode}
+              aria-pressed={boardMode && boardTool === 'inspect'}
               onClick={activateCommentTool}
             >
               <Icon name="comment" size={13} />

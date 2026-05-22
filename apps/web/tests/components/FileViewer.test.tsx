@@ -1315,7 +1315,7 @@ describe('FileViewer tweaks toolbar', () => {
     });
   }
 
-  it('renders Comment as a primary toolbar entry and Sketch annotation under More', () => {
+  it('renders Comment as the primary element picker and keeps secondary annotation tools under More', () => {
     render(
       <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
         liveHtml='<html><body><main data-od-id="hero">Hero</main></body></html>'
@@ -1327,7 +1327,7 @@ describe('FileViewer tweaks toolbar', () => {
     expect(screen.getByTestId('inspect-mode-toggle')).toBeTruthy();
     expect(screen.getByTestId('board-mode-toggle')).toBeTruthy();
     openAgentTools();
-    expect(screen.getByTestId('comment-mode-toggle')).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Pick element' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Region' })).toBeTruthy();
     expect(screen.getByTestId('draw-overlay-toggle')).toBeTruthy();
     expect(screen.getByText('Sketch annotation')).toBeTruthy();
@@ -1635,7 +1635,7 @@ describe('FileViewer tweaks toolbar', () => {
     expect(screen.queryByTestId('annotation-style-summary')).toBeNull();
   });
 
-  it('returns to element picking from the More menu while commenting', async () => {
+  it('returns to element picking from the Comment button while another annotation tool is active', async () => {
     render(
       <FileViewer
         projectId="project-1"
@@ -1645,30 +1645,12 @@ describe('FileViewer tweaks toolbar', () => {
       />,
     );
 
-    const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
-    clickAgentTool('board-mode-toggle');
-
-    window.dispatchEvent(new MessageEvent('message', {
-      source: frame.contentWindow,
-      data: {
-        type: 'od:comment-target',
-        elementId: 'hero',
-        selector: '[data-od-id="hero"]',
-        label: 'p',
-        text: 'Hero',
-        position: { x: 8, y: 12, width: 312, height: 63 },
-        htmlHint: '<p data-od-id="hero">Hero</p>',
-      },
-    }));
-
-    expect(await screen.findByTestId('comment-popover-input')).toBeTruthy();
-
     openAgentTools();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Pick element' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Region' }));
+    expect(screen.getByTestId('board-mode-toggle').getAttribute('aria-pressed')).toBe('false');
 
-    await waitFor(() => {
-      expect(screen.queryByTestId('comment-popover-input')).toBeNull();
-    });
+    fireEvent.click(screen.getByTestId('board-mode-toggle'));
+
     expect(screen.queryByRole('menuitem', { name: 'Pick element' })).toBeNull();
     expect(screen.getByTestId('board-mode-toggle').getAttribute('aria-pressed')).toBe('true');
   });
