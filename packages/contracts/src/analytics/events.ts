@@ -692,11 +692,12 @@ export type TrackingDesignSystemApplyTargetKind =
 
 // Entry from for the run_created / run_finished DS variant. Distinct
 // from the chat-panel entry_from enum because DS runs don't originate
-// from new_project / chat_composer at all.
+// from new_project / chat_composer at all. `regenerate_from_review` was
+// removed — regeneration is tracked via `is_regenerate` +
+// `generation_attempt` so the original entry source is preserved.
 export type TrackingDesignSystemRunEntryFrom =
   | 'design_system_create'
   | 'onboarding_design_system'
-  | 'regenerate_from_review'
   | 'unknown';
 
 // ---- Design-system lifecycle result props --------------------------------
@@ -1643,6 +1644,12 @@ export interface RunCreatedProps {
   design_system_id?: string;
   design_system_source: TrackingDesignSystemSource;
   design_system_version?: string;
+  // DS regeneration tracking. When `is_regenerate` is true, this run
+  // was triggered by a review-feedback regeneration — `entry_from`
+  // still records the *original* entry surface (onboarding vs
+  // design_system_create) so funnel analysis stays unbroken.
+  is_regenerate?: boolean;
+  generation_attempt?: number;
   // DS-variant context. `ds_source_origin` mirrors the
   // `TrackingDesignSystemOrigin` set used on DS page_views (where
   // the DS came from), separate from the runtime-selection

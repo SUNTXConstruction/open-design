@@ -53,8 +53,7 @@ export type ChatAnalyticsEntryFrom =
   | 'new_project'
   | 'chat_composer'
   | 'design_system_create'
-  | 'onboarding_design_system'
-  | 'regenerate_from_review';
+  | 'onboarding_design_system';
 
 export type ChatAnalyticsLengthBucket =
   | '0'
@@ -99,6 +98,8 @@ export interface ChatAnalyticsHints {
     | 'audio'
     | 'design_system'
     | 'other';
+  isRegenerate?: boolean;
+  generationAttempt?: number;
   designSystemRunContext?: ChatAnalyticsDesignSystemRunContext;
 }
 

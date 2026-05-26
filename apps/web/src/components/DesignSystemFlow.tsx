@@ -1494,14 +1494,15 @@ export function DesignSystemDetailView({
 
       // DS workspace chat = the run that generates / regenerates the
       // DESIGN.md and preview modules. Every send from this surface
-      // is a DS-variant run, so we always populate analyticsHints. The
-      // `regenerate_from_review` entry_from is reserved for revisions
-      // triggered by the Looks good / Needs work loop (which today
-      // also flows through this composer); a future split can detect
-      // a pending revision and switch entry_from accordingly.
+      // is a DS-variant run, so we always populate analyticsHints.
+      // Regeneration is tracked via `isRegenerate` + `generationAttempt`
+      // so entry_from always reflects the original entry source.
       const wasOnboardingHandoff =
         Boolean(peekOnboardingSessionId())
         || sessionStorage.getItem(`od:auto-send-first:${projectId}`) === '1';
+      const isRegenerate = previousMessages.length > 0;
+      const generationAttempt =
+        previousMessages.filter((m) => m.role === 'assistant').length + 1;
       void streamViaDaemon({
         agentId: config.agentId,
         history: agentHistory,
@@ -1521,10 +1522,10 @@ export function DesignSystemDetailView({
         analyticsHints: {
           entryFrom: wasOnboardingHandoff
             ? 'onboarding_design_system'
-            : feedbackSection
-              ? 'regenerate_from_review'
-              : 'design_system_create',
+            : 'design_system_create',
           projectKind: 'design_system',
+          isRegenerate,
+          generationAttempt,
           designSystemRunContext: {
             origin: 'manual_create',
           },

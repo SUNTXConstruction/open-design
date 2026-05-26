@@ -11850,6 +11850,12 @@ export async function startServer({
       const hintProjectKind = typeof analyticsHints.projectKind === 'string'
         ? analyticsHints.projectKind
         : null;
+      const hintIsRegenerate = typeof analyticsHints.isRegenerate === 'boolean'
+        ? analyticsHints.isRegenerate
+        : undefined;
+      const hintGenerationAttempt = typeof analyticsHints.generationAttempt === 'number'
+        ? analyticsHints.generationAttempt
+        : undefined;
       const dsRunContext =
         analyticsHints.designSystemRunContext
           && typeof analyticsHints.designSystemRunContext === 'object'
@@ -11858,8 +11864,7 @@ export async function startServer({
       const isDesignSystemRun =
         hintProjectKind === 'design_system'
         || hintEntryFrom === 'design_system_create'
-        || hintEntryFrom === 'onboarding_design_system'
-        || hintEntryFrom === 'regenerate_from_review';
+        || hintEntryFrom === 'onboarding_design_system';
       // Only fields the current `/api/runs` create payload actually
       // sends. The v2 schema documents extended context props
       // (entry_from / project_kind / target_platforms / fidelity /
@@ -11898,6 +11903,8 @@ export async function startServer({
             ? 'unknown'
             : 'not_applicable',
         ...(isDesignSystemRun ? {
+          is_regenerate: hintIsRegenerate ?? false,
+          generation_attempt: hintGenerationAttempt ?? 1,
           ds_source_origin: typeof dsRunContext.origin === 'string'
             ? dsRunContext.origin
             : undefined,

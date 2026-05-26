@@ -2661,23 +2661,23 @@ export function ProjectView({
         // analyticsHints so the daemon emits run_created /
         // run_finished under `page_name=design_system_project`,
         // `area=design_system_generation`, `project_kind=design_system`.
-        // The first-ever message into a DS workspace is the auto-sent
-        // generation kickoff (entry_from=`onboarding_design_system` is
-        // the doc's name for "DS create flow handed off to the agent");
-        // subsequent messages are review-driven regenerations
-        // (`regenerate_from_review`). Use `messages.length === 0` —
-        // truer than autoSendFirstMessageRef which races StrictMode
-        // remounts + sessionStorage clears.
+        // The first message is the initial generation; subsequent ones
+        // are regenerations triggered by review feedback. We track this
+        // via `isRegenerate` + `generationAttempt` rather than changing
+        // entry_from, so the original entry source is preserved.
         const isDesignSystemWorkspaceProject =
           project.metadata?.importedFrom === 'design-system';
-        const dsEntryFrom: 'onboarding_design_system' | 'regenerate_from_review' =
-          messages.length === 0
+        const isFirstGeneration = messages.length === 0;
+        const dsEntryFrom: 'onboarding_design_system' | 'design_system_create' =
+          isFirstGeneration
             ? 'onboarding_design_system'
-            : 'regenerate_from_review';
+            : 'design_system_create';
         const dsAnalyticsHints = isDesignSystemWorkspaceProject
           ? {
               entryFrom: dsEntryFrom,
               projectKind: 'design_system' as const,
+              isRegenerate: !isFirstGeneration,
+              generationAttempt: messages.filter((m) => m.role === 'assistant').length + 1,
               designSystemRunContext: {
                 origin: 'manual_create' as const,
               },
