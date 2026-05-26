@@ -30,12 +30,13 @@ jobs:
       - name: Refresh cache bust date
         run: |
           DATE="$(date -u +%F)"
-          MATCHES="$(perl -0ne '$count += () = /cache_bust=\d{4}-\d{2}-\d{2}/g; END { print $count + 0 }' README*.md)"
+          FILES=$(find . -name 'README*.md' -not -path './.git/*' -not -path './node_modules/*')
+          MATCHES="$(echo "$FILES" | xargs perl -0ne '$count += () = /cache_bust=\d{4}-\d{2}-\d{2}/g; END { print $count + 0 }')"
           if [ "$MATCHES" -eq 0 ]; then
             echo "Warning: No cache_bust patterns found. README format may have changed."
             exit 1
           fi
-          perl -0pi -e "s/cache_bust=\d{4}-\d{2}-\d{2}/cache_bust=$DATE/g" README*.md
+          echo "$FILES" | xargs perl -0pi -e "s/cache_bust=\d{4}-\d{2}-\d{2}/cache_bust=$DATE/g"
 
       - name: Create refresh pull request
         uses: peter-evans/create-pull-request@v8
@@ -44,7 +45,9 @@ jobs:
           # create pull requests, with GITHUB_TOKEN as a fallback for repos where
           # Actions-created PRs are allowed.
           token: ${{ secrets.METRICS_TOKEN || secrets.GITHUB_TOKEN }}
-          add-paths: 'README*.md'
+          add-paths: |
+            README*.md
+            docs/i18n/README*.md
           branch: automation/refresh-contributors-wall
           delete-branch: true
           commit-message: 'docs(readme): refresh contributors wall'
