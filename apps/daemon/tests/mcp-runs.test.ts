@@ -133,6 +133,28 @@ describe('public MCP discovery + generation tools', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  // When a run is mid-flight, the outer agent has no in-band signal
+  // that OD is making progress — which led real Codex clients to cancel
+  // after a few polls and substitute their own output. Surfacing
+  // eventsLogPath plus a hint to tail it gives Codex a way to see live
+  // progress in its own shell and trust the run.
+  it('get_run surfaces eventsLogPath with a tail hint while running', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      id: 'run-99',
+      status: 'running',
+      projectId: 'project-1',
+      eventsLogPath: '/Users/x/.od/runs/run-99/events.jsonl',
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await handleMcpToolCall('http://127.0.0.1:17456', 'get_run', { runId: 'run-99' });
+    const parsed = JSON.parse(firstText(result));
+    expect(parsed.status).toBe('running');
+    expect(parsed.eventsLogPath).toBe('/Users/x/.od/runs/run-99/events.jsonl');
+    expect(parsed.hint).toMatch(/tail/i);
+    expect(parsed.hint).toContain('events.jsonl');
+  });
+
   it('get_run requires a runId', async () => {
     const result = await handleMcpToolCall('http://127.0.0.1:17456', 'get_run', {});
     expect(result).toMatchObject({ isError: true });

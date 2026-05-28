@@ -4828,7 +4828,11 @@ export async function startServer({
 
   const analyticsService = createAnalyticsService({ dataDir: RUNTIME_DATA_DIR });
   const design = {
-    runs: createChatRunService({ createSseResponse, createSseErrorPayload }),
+    runs: createChatRunService({
+      createSseResponse,
+      createSseErrorPayload,
+      runsLogDir: path.join(RUNTIME_DATA_DIR, 'runs'),
+    }),
     analytics: analyticsService,
     getAppVersion: () => cachedAppVersion?.version ?? '0.0.0',
     readAnalyticsContext,

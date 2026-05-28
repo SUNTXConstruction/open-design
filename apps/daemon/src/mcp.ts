@@ -997,6 +997,16 @@ async function getRun(baseUrl: string, args: McpArgs) {
     `${baseUrl}/api/runs/${encodeURIComponent(args.runId)}`,
   );
   if (status.status !== 'succeeded' || typeof status.projectId !== 'string' || !status.projectId) {
+    // Non-terminal (or terminal-but-failed) status. Surface
+    // eventsLogPath with a tail hint so the outer agent can watch live
+    // progress in its own shell instead of cancelling because polling
+    // shows nothing changing.
+    if (typeof status.eventsLogPath === 'string' && status.eventsLogPath.length > 0) {
+      return ok({
+        ...status,
+        hint: 'Run still in flight. Tail eventsLogPath in your own shell (e.g. `tail -n 50 -f "' + status.eventsLogPath + '"`) to see live text_delta / tool_use events from the inner agent — that is your in-flight progress signal. Keep polling get_run every 30–60s; do not cancel because file mtimes look static, that is the agent thinking between writes.',
+      });
+    }
     return ok(status);
   }
   const [previewUrl, agentMessage] = await Promise.all([
@@ -1007,8 +1017,8 @@ async function getRun(baseUrl: string, args: McpArgs) {
   if (previewUrl) enriched.previewUrl = previewUrl;
   if (agentMessage) enriched.agentMessage = agentMessage;
   enriched.hint = previewUrl
-    ? 'Run finished. Open previewUrl in the user-facing browser now to show the rendered design — clients with a built-in browser pane (e.g. Codex CLI) should navigate to it directly; otherwise surface it as a clickable link the user can click. agentMessage carries the inner agent\'s explanation; show it alongside the preview. Call get_artifact (project defaults to this run\'s project) when you need the source files.'
-    : 'Run finished but produced no files. The inner agent\'s output is in agentMessage — relay it to the user verbatim. Most often this is a clarifying question (e.g. a <question-form>) you should answer by calling start_run again with a more specific prompt or a chosen plugin.';
+    ? 'Run finished. Open previewUrl in the user-facing browser now to show the rendered design — clients with a built-in browser pane (e.g. Codex CLI) should navigate to it directly; otherwise surface it as a clickable link the user can click. agentMessage carries the inner agent\'s explanation; show it alongside the preview. Call get_artifact (project defaults to this run\'s project) when you need the source files. eventsLogPath, when present, holds the full inner-agent event log for forensics.'
+    : 'Run finished but produced no files. The inner agent\'s output is in agentMessage — relay it to the user verbatim. Most often this is a clarifying question (e.g. a <question-form>) you should answer by calling start_run again with a more specific prompt or a chosen plugin. eventsLogPath, when present, holds the full event log if you need to inspect what happened.';
   return ok(enriched);
 }
 
