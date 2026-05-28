@@ -21,7 +21,7 @@ import { promises as dnsPromises } from 'node:dns';
 import { promises as fsp } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { EnvHttpProxyAgent } from 'undici';
+import { EnvHttpProxyAgent, Socks5ProxyAgent } from 'undici';
 import {
   applyAgentLaunchEnv,
   getAgentDef,
@@ -236,17 +236,21 @@ export function mergeNoProxyWithLoopbackDefaults(noProxy: string | undefined): s
 function buildConnectionTestProxyDispatcher(
   env: NodeJS.ProcessEnv = process.env,
   options: ConstructorParameters<typeof EnvHttpProxyAgent>[0] = {},
-): EnvHttpProxyAgent | null {
+): EnvHttpProxyAgent | Socks5ProxyAgent | null {
   const proxyEnv = mergeProxyAwareEnv(
     process.platform,
     resolveSystemProxyEnv(),
     env,
   );
   const allProxy = proxyEnv.ALL_PROXY ?? proxyEnv.all_proxy;
+  const socksProxy = socksProxyUrl(allProxy);
   const httpProxyFromAll = isHttpOrHttpsProxy(allProxy);
   const httpProxy = proxyEnv.HTTP_PROXY ?? proxyEnv.http_proxy ?? httpProxyFromAll;
   const httpsProxy = proxyEnv.HTTPS_PROXY ?? proxyEnv.https_proxy ?? httpProxyFromAll;
   const noProxy = mergeNoProxyWithLoopbackDefaults(proxyEnv.NO_PROXY ?? proxyEnv.no_proxy);
+  if (!httpProxy && !httpsProxy && socksProxy) {
+    return new Socks5ProxyAgent(socksProxy);
+  }
   if (!httpProxy && !httpsProxy) return null;
   return new EnvHttpProxyAgent({
     ...options,
@@ -262,6 +266,17 @@ function isHttpOrHttpsProxy(proxyUrl: string | undefined): string | undefined {
   try {
     const { protocol } = new URL(trimmed);
     return protocol === 'http:' || protocol === 'https:' ? trimmed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function socksProxyUrl(proxyUrl: string | undefined): string | undefined {
+  const trimmed = proxyUrl?.trim();
+  if (!trimmed) return undefined;
+  try {
+    const { protocol } = new URL(trimmed);
+    return protocol === 'socks:' || protocol === 'socks5:' ? trimmed : undefined;
   } catch {
     return undefined;
   }

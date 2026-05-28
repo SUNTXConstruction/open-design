@@ -1586,7 +1586,7 @@ describe('POST /api/test/connection provider mode', () => {
     expect(mergeNoProxyWithLoopbackDefaults(input)).toBe(expected);
   });
 
-  it('ignores SOCKS-only ALL_PROXY values for the HTTP proxy dispatcher', async () => {
+  it('uses a SOCKS dispatcher when ALL_PROXY is the only configured proxy', async () => {
     const proxySpy = vi.spyOn(platform, 'resolveSystemProxyEnv').mockReturnValue({});
 
     try {
@@ -1594,8 +1594,8 @@ describe('POST /api/test/connection provider mode', () => {
         ALL_PROXY: 'socks5://system-socks:1080',
       });
 
-      expect(requestInit).toEqual({});
-      await expect(close()).resolves.toBeUndefined();
+      expect(requestInit.dispatcher).toBeDefined();
+      await expect(close()).resolves.toBeNull();
     } finally {
       proxySpy.mockRestore();
     }
