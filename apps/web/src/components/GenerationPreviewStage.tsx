@@ -31,7 +31,6 @@ function reasonTitleKey(code: string | null): keyof Dict | null {
     case 'RATE_LIMITED':
       return 'generationPreview.reasonRateLimited';
     case 'UPSTREAM_UNAVAILABLE':
-    case 'AGENT_UNAVAILABLE':
       return 'generationPreview.reasonService';
     case 'AMR_INSUFFICIENT_BALANCE':
       return 'generationPreview.reasonBalance';

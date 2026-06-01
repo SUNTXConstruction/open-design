@@ -121,6 +121,20 @@ describe('GenerationPreviewStage', () => {
     expect(markup).toContain('data-testid="generation-preview-retry"');
   });
 
+  it('keeps local agent availability failures on the generic failed title', () => {
+    const markup = renderToStaticMarkup(
+      <GenerationPreviewStage
+        model={failedModel('AGENT_UNAVAILABLE', 'codex')}
+        onRetry={vi.fn()}
+        amrGuidance={<div data-testid="amr-guidance-card" />}
+      />,
+    );
+    expect(markup).toContain('Generation failed');
+    expect(markup).not.toContain('Generation service unavailable');
+    expect(markup).not.toContain('data-testid="amr-guidance-card"');
+    expect(markup).toContain('data-testid="generation-preview-retry"');
+  });
+
   it('renders the authorize action for an AMR auth-required failure', () => {
     const markup = renderToStaticMarkup(
       <GenerationPreviewStage
