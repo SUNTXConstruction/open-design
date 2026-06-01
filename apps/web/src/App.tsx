@@ -50,7 +50,12 @@ import {
   fetchSkills,
   uploadProjectFiles,
 } from './providers/registry';
-import { RUNS_CHANGED_EVENT, fetchAmrModels, listProjectRuns } from './providers/daemon';
+import {
+  RUNS_CHANGED_EVENT,
+  fetchAmrModels,
+  listProjectRuns,
+  type VelaLoginStatus,
+} from './providers/daemon';
 import { navigate, useRoute } from './router';
 import {
   fetchDaemonConfig,
@@ -230,6 +235,7 @@ function AppInner() {
   const [daemonLive, setDaemonLive] = useState(false);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const amrModelsRef = useRef<AmrModelsResponse | null>(null);
+  const [amrPollRestartToken, setAmrPollRestartToken] = useState(0);
   // Functional skills (capabilities the agent invokes mid-task) — stays
   // small and lives under the Settings → Skills surface.
   const [skills, setSkills] = useState<SkillSummary[]>([]);
@@ -430,7 +436,12 @@ function AppInner() {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [daemonLive]);
+  }, [amrPollRestartToken, daemonLive]);
+
+  const handleAmrLoginStatusChange = useCallback((status: VelaLoginStatus | null) => {
+    if (status?.loggedIn !== true) return;
+    setAmrPollRestartToken((current) => current + 1);
+  }, []);
 
   // Bootstrap — detect daemon, then fan out independent fetches so each
   // entry-view tab can render the moment its own data lands. Earlier this
@@ -1670,6 +1681,7 @@ function AppInner() {
             setSettingsHighlight(null);
           }}
           onRefreshAgents={refreshAgents}
+          onAmrLoginStatusChange={handleAmrLoginStatusChange}
           onSkillsRefresh={refreshSkills}
           daemonMediaProviders={daemonMediaProviders}
           daemonMediaProvidersFetchState={daemonMediaProvidersFetchState}

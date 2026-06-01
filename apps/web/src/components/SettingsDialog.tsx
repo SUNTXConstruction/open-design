@@ -188,6 +188,7 @@ interface Props {
   onRefreshAgents: (
     options?: AgentRefreshOptions,
   ) => AgentInfo[] | Promise<AgentInfo[] | void> | void;
+  onAmrLoginStatusChange?: (status: VelaLoginStatus | null) => void;
   /** Re-fetch functional skills into App state after Settings mutations. */
   onSkillsRefresh?: () => Promise<void> | void;
   daemonMediaProviders?: AppConfig['mediaProviders'] | null;
@@ -838,6 +839,7 @@ export function SettingsDialog({
   composioConfigLoading = false,
   onClose,
   onRefreshAgents,
+  onAmrLoginStatusChange,
   onSkillsRefresh,
   daemonMediaProviders,
   daemonMediaProvidersFetchState = 'idle',
@@ -911,6 +913,10 @@ export function SettingsDialog({
   const [providerTestState, setProviderTestState] = useState<TestState>({
     status: 'idle',
   });
+
+  useEffect(() => {
+    onAmrLoginStatusChange?.(amrCardStatus);
+  }, [amrCardStatus, onAmrLoginStatusChange]);
 
   useEffect(() => {
     const hasAmrAgent = agents.some((agent) => agent.id === 'amr' && agent.available);

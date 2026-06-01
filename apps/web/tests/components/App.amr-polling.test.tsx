@@ -54,19 +54,40 @@ vi.mock('../../src/components/pet/pets', () => ({
 vi.mock('../../src/components/SettingsDialog', () => ({
   SettingsDialog: ({
     onRefreshAgents,
+    onAmrLoginStatusChange,
   }: {
     onRefreshAgents: (options?: { agentCliEnv?: AppConfig['agentCliEnv'] }) => void | Promise<void>;
+    onAmrLoginStatusChange?: (status: {
+      loggedIn: boolean;
+      loginInFlight?: boolean;
+      profile: string;
+      user: null;
+      configPath: string;
+    } | null) => void;
   }) => (
-    <button
-      onClick={() =>
-        void onRefreshAgents({
-          agentCliEnv: {
-            amr: { VELA_PROFILE: 'next-profile' },
-          },
-        })}
-    >
-      rescan agents
-    </button>
+    <>
+      <button
+        onClick={() =>
+          void onRefreshAgents({
+            agentCliEnv: {
+              amr: { VELA_PROFILE: 'next-profile' },
+            },
+          })}
+      >
+        rescan agents
+      </button>
+      <button
+        onClick={() =>
+          onAmrLoginStatusChange?.({
+            loggedIn: true,
+            profile: 'default',
+            user: null,
+            configPath: '/tmp/amr-config.json',
+          })}
+      >
+        mark amr signed in
+      </button>
+    </>
   ),
 }));
 
@@ -258,7 +279,9 @@ describe('App AMR polling', () => {
     });
   });
 
-  it('stops polling after the remote refresh reports a preset-side error', { timeout: 10_000 }, async () => {
+  it('restarts AMR polling after sign-in when preset refresh previously stopped on a remote error', {
+    timeout: 10_000,
+  }, async () => {
     mockedFetchAmrModels.mockReset();
     mockedFetchAmrModels
       .mockResolvedValueOnce({
@@ -271,6 +294,11 @@ describe('App AMR polling', () => {
         refreshing: true,
         remoteError: 'remote unavailable',
         models: [{ id: 'preset-a', label: 'preset-a' }],
+      })
+      .mockResolvedValueOnce({
+        source: 'remote',
+        refreshing: false,
+        models: [{ id: 'remote-a', label: 'remote-a' }],
       });
 
     render(<App />);
@@ -286,6 +314,17 @@ describe('App AMR polling', () => {
     await new Promise((resolve) => setTimeout(resolve, 1_500));
 
     expect(mockedFetchAmrModels).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByText('open settings'));
+    await waitFor(() => {
+      expect(screen.getByText('mark amr signed in')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText('mark amr signed in'));
+
+    await waitFor(() => {
+      expect(mockedFetchAmrModels).toHaveBeenCalledTimes(3);
+      expect(screen.getByTestId('amr-model').textContent).toBe('remote-a');
+    }, { timeout: 4_000 });
   });
 
   it('stops polling after the preset retry budget is exhausted when remote never arrives', {
