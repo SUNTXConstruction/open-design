@@ -18,13 +18,18 @@ import {
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  $isElementNode,
   $isTextNode,
   $isLineBreakNode,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   KEY_ENTER_COMMAND,
+  KEY_ARROW_LEFT_COMMAND,
+  KEY_ARROW_RIGHT_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
+  KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
   KEY_TAB_COMMAND,
   KEY_ESCAPE_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
@@ -215,6 +220,89 @@ function deleteActiveTrigger(sel: RangeSelection, re: RegExp): void {
   node.spliceText(start, tok.length, '', true);
 }
 
+function hasPlainNavigationIntent(event: KeyboardEvent): boolean {
+  return !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+function mentionBeforeCaret(selection: RangeSelection): MentionNode | null {
+  const point = selection.anchor;
+  const node = point.getNode();
+  if ($isMentionNode(node)) {
+    return point.offset > 0 ? node : null;
+  }
+  if ($isTextNode(node)) {
+    if (point.offset !== 0) return null;
+    const previous = node.getPreviousSibling();
+    return $isMentionNode(previous) ? previous : null;
+  }
+  if ($isElementNode(node)) {
+    if (point.offset <= 0) return null;
+    const previous = node.getChildAtIndex(point.offset - 1);
+    return $isMentionNode(previous) ? previous : null;
+  }
+  return null;
+}
+
+function mentionAfterCaret(selection: RangeSelection): MentionNode | null {
+  const point = selection.anchor;
+  const node = point.getNode();
+  if ($isMentionNode(node)) {
+    return point.offset < node.getTextContentSize() ? node : null;
+  }
+  if ($isTextNode(node)) {
+    if (point.offset !== node.getTextContentSize()) return null;
+    const next = node.getNextSibling();
+    return $isMentionNode(next) ? next : null;
+  }
+  if ($isElementNode(node)) {
+    const next = node.getChildAtIndex(point.offset);
+    return $isMentionNode(next) ? next : null;
+  }
+  return null;
+}
+
+function selectBeforeMention(node: MentionNode): void {
+  const previous = node.getPreviousSibling();
+  if ($isTextNode(previous) && !$isMentionNode(previous)) {
+    const offset = previous.getTextContentSize();
+    previous.select(offset, offset);
+    return;
+  }
+  const parent = node.getParent();
+  if (parent) {
+    const index = node.getIndexWithinParent();
+    parent.select(index, index);
+  }
+}
+
+function selectAfterMention(node: MentionNode): void {
+  const next = node.getNextSibling();
+  if ($isTextNode(next) && !$isMentionNode(next)) {
+    next.select(0, 0);
+    return;
+  }
+  const parent = node.getParent();
+  if (parent) {
+    const index = node.getIndexWithinParent() + 1;
+    parent.select(index, index);
+  }
+}
+
+function removeMentionAtCaret(selection: RangeSelection, isBackward: boolean): boolean {
+  const mention = isBackward
+    ? mentionBeforeCaret(selection)
+    : mentionAfterCaret(selection);
+  if (!mention) return false;
+  const parent = mention.getParent();
+  const index = mention.getIndexWithinParent();
+  mention.remove();
+  if (parent?.isAttached()) {
+    const offset = Math.min(index, parent.getChildrenSize());
+    parent.select(offset, offset);
+  }
+  return true;
+}
+
 function EditorRefPlugin({
   editorRef,
 }: {
@@ -356,6 +444,95 @@ function KeyboardPlugin({
         INSERT_PARAGRAPH_COMMAND,
         () => {
           editor.dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+    );
+  }, [editor]);
+  return null;
+}
+
+function MentionAtomicNavigationPlugin() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    return mergeRegister(
+      editor.registerCommand(
+        KEY_ARROW_LEFT_COMMAND,
+        (event) => {
+          if (editor.isComposing() || !hasPlainNavigationIntent(event)) {
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            !$isRangeSelection(selection) ||
+            !selection.isCollapsed()
+          ) {
+            return false;
+          }
+          const mention = mentionBeforeCaret(selection);
+          if (!mention) return false;
+          event.preventDefault();
+          selectBeforeMention(mention);
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+      editor.registerCommand(
+        KEY_ARROW_RIGHT_COMMAND,
+        (event) => {
+          if (editor.isComposing() || !hasPlainNavigationIntent(event)) {
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            !$isRangeSelection(selection) ||
+            !selection.isCollapsed()
+          ) {
+            return false;
+          }
+          const mention = mentionAfterCaret(selection);
+          if (!mention) return false;
+          event.preventDefault();
+          selectAfterMention(mention);
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+      editor.registerCommand(
+        KEY_BACKSPACE_COMMAND,
+        (event) => {
+          if (editor.isComposing() || !hasPlainNavigationIntent(event)) {
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            !$isRangeSelection(selection) ||
+            !selection.isCollapsed()
+          ) {
+            return false;
+          }
+          if (!removeMentionAtCaret(selection, true)) return false;
+          event.preventDefault();
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+      editor.registerCommand(
+        KEY_DELETE_COMMAND,
+        (event) => {
+          if (editor.isComposing() || !hasPlainNavigationIntent(event)) {
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            !$isRangeSelection(selection) ||
+            !selection.isCollapsed()
+          ) {
+            return false;
+          }
+          if (!removeMentionAtCaret(selection, false)) return false;
+          event.preventDefault();
           return true;
         },
         COMMAND_PRIORITY_HIGH,
@@ -617,6 +794,7 @@ export const LexicalComposerInput = forwardRef<
       <EditorRefPlugin editorRef={editorRef} />
       <OnChangePlugin onChange={onChange} knownEntities={knownEntities} />
       <TriggerPlugin onTrigger={onTrigger} />
+      <MentionAtomicNavigationPlugin />
       <KeyboardPlugin
         popoverOpen={popoverOpen}
         onEnterSend={onEnterSend}

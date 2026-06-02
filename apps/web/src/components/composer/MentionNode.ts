@@ -8,11 +8,11 @@ import {
 } from 'lexical';
 import type { InlineMentionEntity, InlineMentionKind } from '../../utils/inlineMentions';
 
-// The atomic @mention node. It extends TextNode in `'token'` mode so the
-// caret treats it as a single indivisible glyph: one arrow-step crosses it,
-// one Backspace removes the whole thing, and the IME never composes inside
-// it. Because the node's *text* is the literal `@token`, serialization back
-// to the wire format is free — `getTextContent()` already yields `@token`.
+// The atomic @mention node. It extends TextNode so the node's *text* remains
+// the literal `@token` and serialization back to the wire format is free:
+// `getTextContent()` already yields `@token`. Lexical token mode deletes the
+// node as one entity but still allows character-by-character caret navigation,
+// so LexicalComposerInput adds explicit keyboard normalization for arrows.
 type Kind = InlineMentionKind;
 
 export interface MentionPayload {
@@ -92,6 +92,8 @@ export class MentionNode extends TextNode {
   createDOM(config: EditorConfig): HTMLElement {
     const dom = super.createDOM(config); // <span> wrapping the token text
     dom.className = `composer-inline-mention composer-inline-mention--${this.__mentionKind}`;
+    dom.contentEditable = 'false';
+    dom.setAttribute('contenteditable', 'false');
     dom.setAttribute('data-mention', '');
     dom.setAttribute('data-mention-id', this.__mentionId);
     dom.setAttribute('data-mention-kind', this.__mentionKind);
