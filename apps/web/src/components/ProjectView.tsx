@@ -2547,6 +2547,7 @@ export function ProjectView({
         ? resolveRetryTarget(messages, meta.retryOfAssistantId)
         : null;
       if (meta?.retryOfAssistantId && !retryTarget) return false;
+      const runContext = meta?.context ?? retryTarget?.userMsg.runContext;
       const historyBase = retryTarget ? retryTarget.priorMessages : baseMessages ?? messages;
       if (
         !retryTarget &&
@@ -2593,7 +2594,7 @@ export function ProjectView({
         ...(meta?.appliedPluginSnapshot
           ? { appliedPluginSnapshot: meta.appliedPluginSnapshot }
           : {}),
-        ...(meta?.context ? { runContext: meta.context } : {}),
+        ...(runContext ? { runContext } : {}),
         attachments: effectiveAttachments.length > 0 ? effectiveAttachments : undefined,
         commentAttachments: commentAttachments.length > 0 ? commentAttachments : undefined,
       };
@@ -3060,7 +3061,7 @@ export function ProjectView({
           clientRequestId: randomUUID(),
           skillId: project.skillId ?? null,
           skillIds: Array.isArray(meta?.skillIds) ? meta.skillIds : [],
-          context: meta?.context,
+          context: runContext,
           designSystemId: project.designSystemId ?? null,
           attachments: runAttachments.map((a) => a.path),
           commentAttachments: runCommentAttachments,
@@ -3164,7 +3165,7 @@ export function ProjectView({
         const systemPrompt = await composedSystemPrompt(runSessionMode);
         const apiHistory = await historyWithApiAttachmentContext(
           historyWithCommentAttachmentContext(
-            historyWithWorkspaceContext(nextHistory, userMsg.id, meta?.context),
+            historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
             userMsg.id,
           ),
           userMsg.id,
@@ -4117,10 +4118,11 @@ export function ProjectView({
     () =>
       activeConversationId
         ? {
-            conversationId: activeConversationId,
-            messages,
-            streaming: currentConversationStreaming,
-            sendDisabled: currentConversationSendDisabled,
+	            conversationId: activeConversationId,
+	            messages,
+	            streaming: currentConversationStreaming,
+	            loading: currentConversationLoading,
+	            sendDisabled: currentConversationSendDisabled,
             queuedItems: currentConversationQueuedItems,
             error: conversationLoadError ?? error ?? audioVoiceOptionsError,
             onSend: handleSend,
@@ -4142,9 +4144,10 @@ export function ProjectView({
       audioVoiceOptionsError,
       conversationLoadError,
       currentConversationActionDisabled,
-      currentConversationQueuedItems,
-      currentConversationSendDisabled,
-      currentConversationStreaming,
+	      currentConversationQueuedItems,
+	      currentConversationSendDisabled,
+	      currentConversationLoading,
+	      currentConversationStreaming,
       error,
       handleAssistantFeedback,
       handleRetry,
@@ -5008,6 +5011,7 @@ export function ProjectView({
               key={`${project.id}:${activeConversationId ?? 'conversation-unavailable'}:${chatSeed?.id ?? 'ready'}`}
               messages={messages}
               streaming={currentConversationStreaming}
+              loading={currentConversationLoading}
               sendDisabled={currentConversationSendDisabled}
               queuedItems={currentConversationQueuedItems}
               error={conversationLoadError ?? error ?? audioVoiceOptionsError}

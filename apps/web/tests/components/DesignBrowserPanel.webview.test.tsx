@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installMockOpenDesignHost } from '@open-design/host/testing';
 
 import { DesignBrowserPanel } from '../../src/components/DesignBrowserPanel';
+import { I18nProvider } from '../../src/i18n';
 
 // The panel imports these writers from the registry at module load; stub them so
 // rendering never reaches the network.
@@ -264,5 +265,51 @@ describe('DesignBrowserPanel <webview> navigation', () => {
 
     expect(container.querySelector('iframe')).not.toBeNull();
     expect(screen.queryByText('Embedded browser controls are available in the desktop app.')).toBeNull();
+  });
+
+  it('reuses the artifact mark label and icon for page annotation', () => {
+    const { container } = render(
+      <I18nProvider initial="zh-CN">
+        <DesignBrowserPanel
+          initialUrl="https://example.com"
+          projectId="proj-webview-mark-i18n"
+          onOpenFile={() => {}}
+          onRefreshFiles={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    const markButton = screen.getByRole('button', { name: '标记' });
+    expect(markButton.parentElement?.getAttribute('data-tooltip')).toBe('标记');
+    expect(markButton.querySelector('.ri-mark-pen-line')).not.toBeNull();
+    expect(container.querySelector('.ri-pencil-line')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Annotate page' })).toBeNull();
+  });
+
+  it('hides open annotation chrome while taking a browser screenshot', async () => {
+    restoreHost?.();
+    const capturePage = vi.fn(async () => {
+      expect(document.querySelector<HTMLElement>('.preview-draw-toolbar')?.style.visibility).toBe('hidden');
+      return { ok: true as const, dataUrl: 'data:image/png;base64,cG5n', w: 10, h: 10 };
+    });
+    restoreHost = installMockOpenDesignHost({
+      host: { capture: { page: capturePage } },
+    });
+
+    const { container } = render(
+      <DesignBrowserPanel
+        initialUrl="https://example.com"
+        projectId="proj-webview-screenshot-hides-tools"
+        onOpenFile={() => {}}
+        onRefreshFiles={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark' }));
+    expect(container.querySelector('.preview-draw-toolbar')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Screenshot' }));
+
+    await waitFor(() => expect(capturePage).toHaveBeenCalledTimes(1));
   });
 });

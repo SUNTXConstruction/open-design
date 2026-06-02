@@ -222,6 +222,17 @@ describe('ChatPane streaming state', () => {
         content: 'Generate the refinement glow-up deck',
         createdAt: 1,
         sessionMode: 'design',
+        runContext: {
+          workspaceItems: [
+            {
+              id: 'browser:tab-1',
+              kind: 'browser',
+              label: 'Dribbble',
+              tabId: 'tab-1',
+              url: 'https://dribbble.com/',
+            },
+          ],
+        },
         appliedPluginSnapshot: {
           snapshotId: 'snap-refinement',
           pluginId: 'refinement-plugin',
@@ -271,6 +282,7 @@ describe('ChatPane streaming state', () => {
     );
 
     expect(screen.getByTestId('msg-session-mode-chip').textContent).toContain('Design Agent');
+    expect(screen.getByTestId('msg-workspace-context-chip').textContent).toContain('Dribbble');
     expect(screen.getByTestId('msg-plugin-chip').textContent)
       .toContain('A Decade of Refinement Glow-Up');
     // The plugin's resolved context is now collapsed into the single

@@ -1005,7 +1005,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 });
               }
               const prompt = [draft.trim(), detail.note].filter(Boolean).join('\n');
-              const attachments = [...staged, ...uploaded];
+              const attachments = sortChatAttachmentsByOrder([...staged, ...uploaded]);
               const nextCommentAttachments = currentCommentAttachments(visualAttachment ? [visualAttachment] : []);
               sendComposedTurn(prompt, attachments, nextCommentAttachments, queueMeta(currentRunContextMeta()));
               ack({ ok: true });
@@ -1026,7 +1026,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 });
               }
               const prompt = [draft.trim(), detail.note].filter(Boolean).join('\n');
-              const attachments = [...staged, ...uploaded];
+              const attachments = sortChatAttachmentsByOrder([...staged, ...uploaded]);
               const nextCommentAttachments = currentCommentAttachments(visualAttachment ? [visualAttachment] : []);
               sendComposedTurn(prompt, attachments, nextCommentAttachments, currentRunContextMeta());
               ack({ ok: true });

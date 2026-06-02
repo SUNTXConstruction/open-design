@@ -757,11 +757,11 @@ export function listConversations(db: SqliteDb, projectId: string) {
             FROM conversations
            WHERE project_id = ?
         ),
-	        latest_runs AS (
-	          SELECT conversation_id AS conversationId,
-	                 run_status AS latestRunStatus,
-	                 started_at AS latestRunStartedAt,
-	                 ended_at AS latestRunEndedAt,
+        latest_runs AS (
+          SELECT conversation_id AS conversationId,
+                 run_status AS latestRunStatus,
+                 started_at AS latestRunStartedAt,
+                 ended_at AS latestRunEndedAt,
                  events_json AS latestRunEventsJson
             FROM (
               SELECT m.conversation_id,
@@ -777,37 +777,37 @@ export function listConversations(db: SqliteDb, projectId: string) {
                 JOIN project_conversations c ON c.id = m.conversation_id
                WHERE m.role = 'assistant'
                  AND m.run_status IS NOT NULL
-	           )
-	           WHERE rn = 1
-	        ),
-	        message_counts AS (
-	          SELECT m.conversation_id AS conversationId,
-	                 COUNT(*) AS messageCount
-	            FROM messages m
-	            JOIN project_conversations c ON c.id = m.conversation_id
-	           GROUP BY m.conversation_id
-	        )
-	        SELECT c.id, c.projectId, c.title, c.sessionMode, c.createdAt, c.updatedAt,
-	               COALESCE(mc.messageCount, 0) AS messageCount,
-	               lr.latestRunStatus, lr.latestRunStartedAt,
-	               lr.latestRunEndedAt, lr.latestRunEventsJson
-	          FROM project_conversations c
-	          LEFT JOIN latest_runs lr ON lr.conversationId = c.id
-	          LEFT JOIN message_counts mc ON mc.conversationId = c.id
-	         ORDER BY c.updatedAt DESC`,
-	    )
-	    .all(projectId)).map(normalizeConversation);
+            )
+           WHERE rn = 1
+        ),
+        message_counts AS (
+          SELECT m.conversation_id AS conversationId,
+                 COUNT(*) AS messageCount
+            FROM messages m
+            JOIN project_conversations c ON c.id = m.conversation_id
+           GROUP BY m.conversation_id
+        )
+        SELECT c.id, c.projectId, c.title, c.sessionMode, c.createdAt, c.updatedAt,
+               COALESCE(mc.messageCount, 0) AS messageCount,
+               lr.latestRunStatus, lr.latestRunStartedAt,
+               lr.latestRunEndedAt, lr.latestRunEventsJson
+          FROM project_conversations c
+          LEFT JOIN latest_runs lr ON lr.conversationId = c.id
+          LEFT JOIN message_counts mc ON mc.conversationId = c.id
+         ORDER BY c.updatedAt DESC`,
+    )
+    .all(projectId)).map(normalizeConversation);
 }
 
 export function getConversation(db: SqliteDb, id: string) {
   const r = db
-	    .prepare(
-	      `SELECT id, project_id AS projectId, title, session_mode AS sessionMode,
-	              created_at AS createdAt, updated_at AS updatedAt,
-	              (SELECT COUNT(*) FROM messages WHERE conversation_id = conversations.id) AS messageCount
-	         FROM conversations WHERE id = ?`,
-	    )
-	    .get(id) as DbRow | undefined;
+    .prepare(
+      `SELECT id, project_id AS projectId, title, session_mode AS sessionMode,
+              created_at AS createdAt, updated_at AS updatedAt,
+              (SELECT COUNT(*) FROM messages WHERE conversation_id = conversations.id) AS messageCount
+         FROM conversations WHERE id = ?`,
+    )
+    .get(id) as DbRow | undefined;
   if (!r) return null;
   return {
     ...normalizeConversation(r),
@@ -1007,7 +1007,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       )
       .get(conversationId) as DbRow | undefined;
     const position = (max?.m ?? -1) + 1;
-    // 21 values: id, conversation_id, role, content, agent_id, agent_name,
+    // 22 values: id, conversation_id, role, content, agent_id, agent_name,
     // run_id, run_status, last_run_event_id, events_json, attachments_json,
     // comment_attachments_json, produced_files_json, feedback_json,
     // pre_turn_file_names_json, session_mode, run_context_json,

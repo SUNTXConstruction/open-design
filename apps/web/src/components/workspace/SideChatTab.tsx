@@ -20,6 +20,7 @@ export interface ActiveConversationChatState {
   conversationId: string;
   messages: ChatMessage[];
   streaming: boolean;
+  loading?: boolean;
   sendDisabled?: boolean;
   queuedItems?: Array<{
     id: string;
@@ -131,9 +132,10 @@ export function SideChatTab({
       </div>
       <div className={styles.pane}>
         <ChatPane
-          messages={controlledChat?.messages ?? chat.messages}
-          streaming={controlledChat?.streaming ?? chat.streaming}
-          sendDisabled={controlledChat?.sendDisabled}
+	          messages={controlledChat?.messages ?? chat.messages}
+	          streaming={controlledChat?.streaming ?? chat.streaming}
+	          loading={controlledChat?.loading ?? chat.loading}
+	          sendDisabled={controlledChat?.sendDisabled}
           queuedItems={controlledChat?.queuedItems}
           onRemoveQueuedSend={controlledChat?.onRemoveQueuedSend}
           onUpdateQueuedSend={controlledChat?.onUpdateQueuedSend}

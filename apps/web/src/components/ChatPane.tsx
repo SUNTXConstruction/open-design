@@ -39,7 +39,7 @@ import {
   type ChatSendMeta,
 } from './ChatComposer';
 import type { PluginFolderAgentAction } from './design-files/pluginFolderActions';
-import { Icon } from './Icon';
+import { Icon, type IconName } from './Icon';
 import { repoConnectCopy } from './design-system-github-evidence';
 import type { SettingsSection } from './SettingsDialog';
 
@@ -484,6 +484,8 @@ export function ChatPane({
   };
   const [tab, setTab] = useState<Tab>('chat');
   const [showConvList, setShowConvList] = useState(false);
+  const [conversationSearch, setConversationSearch] = useState('');
+  const deferredConversationSearch = useDeferredValue(conversationSearch);
   const [scrolledFromBottom, setScrolledFromBottom] = useState(false);
   // The user can dismiss the pinned task list once everything is complete.
   // We key the dismissal on the snapshot (serialized TodoWrite input) so
@@ -897,6 +899,11 @@ export function ChatPane({
     };
   }, [showConvList]);
 
+  useEffect(() => {
+    if (showConvList) return;
+    setConversationSearch('');
+  }, [showConvList]);
+
   const activeConversation =
     conversations.find((c) => c.id === activeConversationId) ?? null;
   const activeConversationMissing = !activeConversation;
@@ -907,6 +914,10 @@ export function ChatPane({
   const activeConversationRenameLabel = activeConversation
     ? t('chat.renameConversationLabel', { title: activeConversationTitle })
     : '';
+  const filteredConversations = useMemo(
+    () => filterConversations(conversations, deferredConversationSearch, t),
+    [conversations, deferredConversationSearch, t],
+  );
   const titleEditClosedRef = useRef(false);
   const [editingActiveTitle, setEditingActiveTitle] = useState(false);
   const [activeTitleDraft, setActiveTitleDraft] = useState('');
@@ -1067,28 +1078,40 @@ export function ChatPane({
                     </button>
                   ) : null}
                 </div>
-                <div className="chat-history-list" data-testid="conversation-list">
-                  {conversations.length === 0 ? (
-                    <div className="chat-history-empty">
-                      {t('chat.emptyConversations')}
-                    </div>
-                  ) : (
-                    conversations.map((c) => (
-                      <ConversationRow
-                        key={c.id}
-                        conversation={c}
-                        active={c.id === activeConversationId}
-                        onSelect={() => {
-                          onSelectConversation(c.id);
-                          setShowConvList(false);
-                        }}
-                        onDelete={() => onDeleteConversation(c.id)}
-                        onRename={onRenameConversation}
-                        t={t}
-                      />
-                    ))
-                  )}
+                <div className="chat-history-search">
+                  <Icon name="search" size={12} />
+                  <input
+                    autoFocus
+                    value={conversationSearch}
+                    onChange={(event) => setConversationSearch(event.target.value)}
+                    placeholder={t('common.searchEllipsis')}
+                    aria-label={t('common.search')}
+                    data-testid="conversation-history-search"
+                  />
+                  {conversationSearch ? (
+                    <button
+                      type="button"
+                      className="chat-history-search-clear"
+                      aria-label={t('pluginsHome.clearSearch')}
+                      onClick={() => setConversationSearch('')}
+                    >
+                      <Icon name="close" size={11} />
+                    </button>
+                  ) : null}
                 </div>
+                <ConversationHistoryList
+                  conversations={filteredConversations}
+                  totalConversations={conversations.length}
+                  activeConversationId={activeConversationId}
+                  activeMessageCount={messages.length}
+                  onSelect={(id) => {
+                    onSelectConversation(id);
+                    setShowConvList(false);
+                  }}
+                  onDelete={onDeleteConversation}
+                  onRename={onRenameConversation}
+                  t={t}
+                />
               </div>
             ) : null}
           </div>
@@ -1135,8 +1158,13 @@ export function ChatPane({
       {tab === 'chat' ? (
         <>
           <div className="chat-log-wrap">
-            <div className="chat-log" ref={logRef}>
-              {messages.length === 0 ? (
+            <div
+              className={`chat-log${loading ? ' is-loading' : ''}`}
+              ref={logRef}
+              aria-busy={loading}
+            >
+              {loading ? <ChatConversationLoading t={t} /> : null}
+              {messages.length === 0 && !loading ? (
                 <div className="chat-empty-wrap">
                   <div className="chat-empty">
                     <span className="chat-empty-title">
@@ -1203,80 +1231,39 @@ export function ChatPane({
                   ) : null}
                 </div>
               ) : null}
-              {messages.map((m, i) => {
-                const showDaySeparator = shouldShowDaySeparator(messages[i - 1], m);
-                const messageStreaming = isAssistantMessageStreaming(
-                  m,
-                  streaming,
-                  lastAssistantId,
-                  forceStreamingMessageIds,
-                );
-                return (
-                  <Fragment key={m.id}>
-                    {showDaySeparator ? <DaySeparator ts={messageTime(m)} /> : null}
-                    {m.role === 'user' ? (
-                      <UserMessage
-                        message={m}
-                        projectId={projectId}
-                        projectFileNames={projectFileNames}
-                        onRequestOpenFile={onRequestOpenFile}
-                        t={t}
-                        activePluginSnapshot={
-                          m.id === firstUserMessageId
-                            ? activePluginSnapshot ?? null
-                            : null
-                        }
-                        activeDesignSystem={
-                          m.id === firstUserMessageId
-                            ? activeDesignSystem ?? null
-                            : null
-                        }
-                      />
-                    ) : (
-                      <AssistantMessage
-                        message={m}
-                        streaming={messageStreaming}
-                        projectId={projectId}
-                        projectKind={projectKindForTracking}
-                        conversationId={activeConversationId}
-                        projectFiles={projectFiles}
-                        projectFileNames={projectFileNames}
-                        onRequestOpenFile={onRequestOpenFile}
-                        onRequestPluginFolderAgentAction={onRequestPluginFolderAgentAction}
-                        activePluginActionPaths={activePluginActionPaths}
-                        hiddenPluginActionPaths={hiddenPluginActionPaths}
-                        isLast={m.id === lastAssistantId}
-                        errorCardOwnerId={errorCardOwnerId}
-                        nextUserContent={nextUserContentByAssistantId.get(m.id)}
-                        suppressDirectionForms={hasActiveDesignSystem}
-                        hasDesignSystemContext={hasActiveDesignSystem || !!activeDesignSystem}
-                        onSubmitForm={(text) => {
-                          pinnedToBottomRef.current = true;
-                          scrolledToFormRef.current = new Set();
-                          assistantCallbacksRef.current.onSubmitForm?.(text);
-                        }}
-                        onContinueRemainingTasks={
-                          m.id === lastAssistantId && onContinueRemainingTasks
-                            ? (todos) =>
-                                assistantCallbacksRef.current.onContinueRemainingTasks?.(m, todos)
-                            : undefined
-                        }
-                        onForkFromMessage={
-                          onForkFromMessage
-                            ? () => assistantCallbacksRef.current.onForkFromMessage?.(m)
-                            : undefined
-                        }
-                        forking={forkingMessageId === m.id}
-                        onFeedback={
-                          onAssistantFeedback
-                            ? (rating) => assistantCallbacksRef.current.onAssistantFeedback?.(m, rating)
-                            : undefined
-                        }
-                      />
-                    )}
-                  </Fragment>
-                );
-              })}
+              <ChatRows
+                messages={messages}
+                streaming={streaming}
+                projectId={projectId}
+                projectKindForTracking={projectKindForTracking}
+                activeConversationId={activeConversationId}
+                activeConversationKey={activeConversationId ?? 'no-conversation'}
+                projectFiles={projectFiles}
+                projectFileNames={projectFileNames}
+                onRequestOpenFile={onRequestOpenFile}
+                onRequestPluginFolderAgentAction={onRequestPluginFolderAgentAction}
+                activePluginActionPaths={activePluginActionPaths}
+                hiddenPluginActionPaths={hiddenPluginActionPaths}
+                forceStreamingMessageIds={forceStreamingMessageIds}
+                lastAssistantId={lastAssistantId}
+                firstUserMessageId={firstUserMessageId}
+                activePluginSnapshot={activePluginSnapshot}
+                activeDesignSystem={activeDesignSystem}
+                hasActiveDesignSystem={hasActiveDesignSystem}
+                errorCardOwnerId={errorCardOwnerId}
+                nextUserContentByAssistantId={nextUserContentByAssistantId}
+                assistantCallbacksRef={assistantCallbacksRef}
+                onContinueRemainingTasks={onContinueRemainingTasks}
+                onForkFromMessage={onForkFromMessage}
+                onAssistantFeedback={onAssistantFeedback}
+                forkingMessageId={forkingMessageId}
+                t={t}
+                onAssistantFormSubmitStart={() => {
+                  pinnedToBottomRef.current = true;
+                  scrolledToFormRef.current = new Set();
+                }}
+                scrollContainerRef={logRef}
+              />
               {displayError ? (
                 <div className="msg error">
                   <span className="chat-error-text">{displayError}</span>
@@ -1440,6 +1427,436 @@ export function ChatPane({
       ) : null}
     </div>
   );
+}
+
+interface AssistantCallbacks {
+  onSubmitForm: ((text: string) => void) | undefined;
+  onContinueRemainingTasks:
+    | ((assistantMessage: ChatMessage, todos: TodoItem[]) => void)
+    | undefined;
+  onAssistantFeedback:
+    | ((message: ChatMessage, change: ChatMessageFeedbackChange) => void)
+    | undefined;
+  onForkFromMessage: ((message: ChatMessage) => void) | undefined;
+}
+
+type ChatRenderItem =
+  | {
+      kind: 'separator';
+      key: string;
+      timestamp: number;
+    }
+  | {
+      kind: 'message';
+      key: string;
+      message: ChatMessage;
+    };
+
+function ChatConversationLoading({ t }: { t: TranslateFn }) {
+  return (
+    <div className="chat-loading-state" role="status" aria-live="polite">
+      <span className="chat-loading-mark" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="chat-loading-copy">{t('common.loading')}</span>
+      <span className="chat-loading-lines" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </span>
+    </div>
+  );
+}
+
+function ChatRows({
+  messages,
+  streaming,
+  projectId,
+  projectKindForTracking,
+  activeConversationId,
+  activeConversationKey,
+  projectFiles,
+  projectFileNames,
+  onRequestOpenFile,
+  onRequestPluginFolderAgentAction,
+  activePluginActionPaths,
+  hiddenPluginActionPaths,
+  forceStreamingMessageIds,
+  lastAssistantId,
+  firstUserMessageId,
+  activePluginSnapshot,
+  activeDesignSystem,
+  hasActiveDesignSystem,
+  errorCardOwnerId,
+  nextUserContentByAssistantId,
+  assistantCallbacksRef,
+  onContinueRemainingTasks,
+  onForkFromMessage,
+  onAssistantFeedback,
+  forkingMessageId,
+  t,
+  onAssistantFormSubmitStart,
+  scrollContainerRef,
+}: {
+  messages: ChatMessage[];
+  streaming: boolean;
+  projectId: string | null;
+  projectKindForTracking: TrackingProjectKind | null;
+  activeConversationId: string | null;
+  activeConversationKey: string;
+  projectFiles: ProjectFile[];
+  projectFileNames?: Set<string>;
+  onRequestOpenFile?: (name: string) => void;
+  onRequestPluginFolderAgentAction?: (relativePath: string, action: PluginFolderAgentAction) => void;
+  activePluginActionPaths?: Set<string>;
+  hiddenPluginActionPaths?: Set<string>;
+  forceStreamingMessageIds?: Set<string>;
+  lastAssistantId: string | undefined;
+  firstUserMessageId: string | undefined;
+  activePluginSnapshot?: AppliedPluginSnapshot | null;
+  activeDesignSystem?: DesignSystemSummary | null;
+  hasActiveDesignSystem: boolean;
+  errorCardOwnerId: string | null;
+  nextUserContentByAssistantId: Map<string, string>;
+  assistantCallbacksRef: MutableRefObject<AssistantCallbacks>;
+  onContinueRemainingTasks?: (assistantMessage: ChatMessage, todos: TodoItem[]) => void;
+  onForkFromMessage?: (message: ChatMessage) => void;
+  onAssistantFeedback?: (message: ChatMessage, change: ChatMessageFeedbackChange) => void;
+  forkingMessageId?: string | null;
+  t: TranslateFn;
+  onAssistantFormSubmitStart: () => void;
+  scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
+}) {
+  const items = useMemo(() => buildChatRenderItems(messages), [messages]);
+  const virtualized = items.length > CHAT_MESSAGE_VIRTUALIZE_THRESHOLD;
+  const virtualWindow = useMeasuredVirtualWindow(items, {
+    enabled: virtualized,
+    containerRef: scrollContainerRef,
+    estimateSize: estimateChatRenderItemHeight,
+    overscanPx: CHAT_MESSAGE_OVERSCAN_PX,
+    resetKey: activeConversationKey,
+    initialTailRows: CHAT_VIRTUAL_INITIAL_TAIL_ROWS,
+  });
+
+  const renderItem = (item: ChatRenderItem) => {
+    if (item.kind === 'separator') {
+      return <DaySeparator ts={item.timestamp} />;
+    }
+    const m = item.message;
+    const messageStreaming = isAssistantMessageStreaming(
+      m,
+      streaming,
+      lastAssistantId,
+      forceStreamingMessageIds,
+    );
+    if (m.role === 'user') {
+      return (
+        <UserMessage
+          message={m}
+          projectId={projectId}
+          projectFileNames={projectFileNames}
+          onRequestOpenFile={onRequestOpenFile}
+          t={t}
+          activePluginSnapshot={
+            m.id === firstUserMessageId
+              ? activePluginSnapshot ?? null
+              : null
+          }
+          activeDesignSystem={
+            m.id === firstUserMessageId
+              ? activeDesignSystem ?? null
+              : null
+          }
+        />
+      );
+    }
+    return (
+      <AssistantMessage
+        message={m}
+        streaming={messageStreaming}
+        projectId={projectId}
+        projectKind={projectKindForTracking}
+        conversationId={activeConversationId}
+        projectFiles={projectFiles}
+        projectFileNames={projectFileNames}
+        onRequestOpenFile={onRequestOpenFile}
+        onRequestPluginFolderAgentAction={onRequestPluginFolderAgentAction}
+        activePluginActionPaths={activePluginActionPaths}
+        hiddenPluginActionPaths={hiddenPluginActionPaths}
+        isLast={m.id === lastAssistantId}
+        errorCardOwnerId={errorCardOwnerId}
+        nextUserContent={nextUserContentByAssistantId.get(m.id)}
+        suppressDirectionForms={hasActiveDesignSystem}
+        hasDesignSystemContext={hasActiveDesignSystem || !!activeDesignSystem}
+        onSubmitForm={(text) => {
+          onAssistantFormSubmitStart();
+          assistantCallbacksRef.current.onSubmitForm?.(text);
+        }}
+        onContinueRemainingTasks={
+          m.id === lastAssistantId && onContinueRemainingTasks
+            ? (todos) => assistantCallbacksRef.current.onContinueRemainingTasks?.(m, todos)
+            : undefined
+        }
+        onForkFromMessage={
+          onForkFromMessage
+            ? () => assistantCallbacksRef.current.onForkFromMessage?.(m)
+            : undefined
+        }
+        forking={forkingMessageId === m.id}
+        onFeedback={
+          onAssistantFeedback
+            ? (rating) => assistantCallbacksRef.current.onAssistantFeedback?.(m, rating)
+            : undefined
+        }
+      />
+    );
+  };
+
+  if (items.length === 0) return null;
+
+  if (!virtualized) {
+    return (
+      <>
+        {items.map((item) => (
+          <Fragment key={item.key}>{renderItem(item)}</Fragment>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <div
+      className="chat-virtual-spacer"
+      data-testid="chat-virtual-spacer"
+      style={{ height: virtualWindow.totalHeight }}
+    >
+      {virtualWindow.rows.map((row) => (
+        <VirtualChatRow
+          key={row.item.key}
+          itemKey={row.item.key}
+          top={row.top}
+          onMeasure={virtualWindow.onMeasure}
+        >
+          {renderItem(row.item)}
+        </VirtualChatRow>
+      ))}
+    </div>
+  );
+}
+
+function VirtualChatRow({
+  itemKey,
+  top,
+  onMeasure,
+  children,
+}: {
+  itemKey: string;
+  top: number;
+  onMeasure: (key: string, height: number) => void;
+  children: ReactNode;
+}) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const node = rowRef.current;
+    if (!node) return;
+    const measure = () => {
+      const height = node.getBoundingClientRect().height;
+      onMeasure(itemKey, height);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [itemKey, onMeasure]);
+
+  return (
+    <div
+      ref={rowRef}
+      className="chat-virtual-row"
+      style={{ transform: `translateY(${top}px)` }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function buildChatRenderItems(messages: ChatMessage[]): ChatRenderItem[] {
+  const items: ChatRenderItem[] = [];
+  for (let i = 0; i < messages.length; i += 1) {
+    const message = messages[i]!;
+    if (shouldShowDaySeparator(messages[i - 1], message)) {
+      const timestamp = messageTime(message);
+      if (timestamp === undefined) continue;
+      items.push({
+        kind: 'separator',
+        key: `day:${dayKey(timestamp)}:${message.id}`,
+        timestamp,
+      });
+    }
+    items.push({
+      kind: 'message',
+      key: `message:${message.id}`,
+      message,
+    });
+  }
+  return items;
+}
+
+function estimateChatRenderItemHeight(item: ChatRenderItem): number {
+  if (item.kind === 'separator') return 34 + CHAT_VIRTUAL_ROW_GAP_PX;
+  const message = item.message;
+  const contentLength = message.content?.length ?? 0;
+  const attachmentCount = (message.attachments?.length ?? 0) + (message.commentAttachments?.length ?? 0);
+  const eventCount = message.events?.length ?? 0;
+  const fileCount = message.producedFiles?.length ?? 0;
+  const base = message.role === 'user' ? 82 : 118;
+  const contentRows = Math.min(18, Math.ceil(contentLength / 120));
+  return (
+    base
+    + contentRows * 18
+    + attachmentCount * 34
+    + eventCount * 28
+    + fileCount * 32
+    + CHAT_VIRTUAL_ROW_GAP_PX
+  );
+}
+
+function useMeasuredVirtualWindow<T extends { key: string }>(
+  items: T[],
+  {
+    enabled,
+    containerRef,
+    estimateSize,
+    overscanPx,
+    resetKey,
+    initialTailRows,
+  }: {
+    enabled: boolean;
+    containerRef: MutableRefObject<HTMLDivElement | null>;
+    estimateSize: (item: T) => number;
+    overscanPx: number;
+    resetKey: string;
+    initialTailRows: number;
+  },
+) {
+  const measuredHeightsRef = useRef<Map<string, number>>(new Map());
+  const [measureVersion, setMeasureVersion] = useState(0);
+  const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 });
+
+  useEffect(() => {
+    measuredHeightsRef.current.clear();
+    setMeasureVersion((version) => version + 1);
+    setViewport({ scrollTop: 0, height: 0 });
+  }, [resetKey]);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const el = containerRef.current;
+    if (!el) return undefined;
+    let frame: number | null = null;
+    const readViewport = () => {
+      frame = null;
+      setViewport((current) => {
+        const next = {
+          scrollTop: el.scrollTop,
+          height: el.clientHeight || CHAT_VIRTUAL_DEFAULT_VIEWPORT_PX,
+        };
+        return current.scrollTop === next.scrollTop && current.height === next.height
+          ? current
+          : next;
+      });
+    };
+    const scheduleRead = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(readViewport);
+    };
+    scheduleRead();
+    el.addEventListener('scroll', scheduleRead, { passive: true });
+    const observer =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(scheduleRead)
+        : null;
+    observer?.observe(el);
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', scheduleRead);
+      observer?.disconnect();
+    };
+  }, [containerRef, enabled]);
+
+  const layout = useMemo(() => {
+    const offsets: number[] = [];
+    const sizes: number[] = [];
+    let cursor = 0;
+    for (const item of items) {
+      offsets.push(cursor);
+      const measured = measuredHeightsRef.current.get(item.key);
+      const size = Math.max(
+        CHAT_VIRTUAL_MIN_ROW_HEIGHT,
+        measured ?? estimateSize(item),
+      );
+      sizes.push(size);
+      cursor += size;
+    }
+    return { offsets, sizes, totalHeight: cursor };
+  }, [estimateSize, items, measureVersion]);
+
+  const rows = useMemo(() => {
+    if (!enabled || items.length === 0) return [];
+    const height = viewport.height || CHAT_VIRTUAL_DEFAULT_VIEWPORT_PX;
+    if (viewport.scrollTop === 0 && viewport.height === 0) {
+      const start = Math.max(0, items.length - initialTailRows);
+      return items.slice(start).map((item, offset) => {
+        const index = start + offset;
+        return { item, index, top: layout.offsets[index] ?? 0 };
+      });
+    }
+    const startTarget = Math.max(0, viewport.scrollTop - overscanPx);
+    const endTarget = viewport.scrollTop + height + overscanPx;
+    let start = 0;
+    while (
+      start < items.length - 1
+      && (layout.offsets[start] ?? 0) + (layout.sizes[start] ?? 0) < startTarget
+    ) {
+      start += 1;
+    }
+    let end = start;
+    while (end < items.length && (layout.offsets[end] ?? 0) <= endTarget) {
+      end += 1;
+    }
+    return items.slice(start, end).map((item, offset) => {
+      const index = start + offset;
+      return { item, index, top: layout.offsets[index] ?? 0 };
+    });
+  }, [
+    enabled,
+    initialTailRows,
+    items,
+    layout.offsets,
+    layout.sizes,
+    overscanPx,
+    viewport.height,
+    viewport.scrollTop,
+  ]);
+
+  const onMeasure = useCallback((key: string, height: number) => {
+    if (!Number.isFinite(height) || height <= 0) return;
+    const next = Math.max(CHAT_VIRTUAL_MIN_ROW_HEIGHT, Math.ceil(height));
+    const previous = measuredHeightsRef.current.get(key);
+    if (previous !== undefined && Math.abs(previous - next) < 2) return;
+    measuredHeightsRef.current.set(key, next);
+    setMeasureVersion((version) => version + 1);
+  }, []);
+
+  return {
+    rows,
+    totalHeight: layout.totalHeight,
+    onMeasure,
+  };
 }
 
 // Pinned task list above the chat composer. The latest TodoWrite snapshot
@@ -1892,9 +2309,180 @@ export function isAssistantMessageStreaming(
   return true;
 }
 
+function ConversationHistoryList({
+  conversations,
+  totalConversations,
+  activeConversationId,
+  activeMessageCount,
+  onSelect,
+  onDelete,
+  onRename,
+  t,
+}: {
+  conversations: Conversation[];
+  totalConversations: number;
+  activeConversationId: string | null;
+  activeMessageCount: number;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename?: (id: string, title: string) => void;
+  t: TranslateFn;
+}) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 });
+  const virtualized = conversations.length > CONVERSATION_VIRTUALIZE_THRESHOLD;
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    setViewport({ scrollTop: 0, height: el.clientHeight || 320 });
+  }, [conversations]);
+
+  useEffect(() => {
+    if (!virtualized) return undefined;
+    const el = listRef.current;
+    if (!el) return undefined;
+    let frame: number | null = null;
+    const readViewport = () => {
+      frame = null;
+      setViewport((current) => {
+        const next = { scrollTop: el.scrollTop, height: el.clientHeight || 320 };
+        return current.scrollTop === next.scrollTop && current.height === next.height
+          ? current
+          : next;
+      });
+    };
+    const scheduleRead = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(readViewport);
+    };
+    scheduleRead();
+    el.addEventListener('scroll', scheduleRead, { passive: true });
+    const observer =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(scheduleRead)
+        : null;
+    observer?.observe(el);
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', scheduleRead);
+      observer?.disconnect();
+    };
+  }, [virtualized]);
+
+  const visibleRows = useMemo(() => {
+    if (!virtualized) {
+      return conversations.map((conversation, index) => ({
+        conversation,
+        top: index * CONVERSATION_ROW_HEIGHT_PX,
+      }));
+    }
+    const height = viewport.height || 320;
+    const start = Math.max(
+      0,
+      Math.floor(viewport.scrollTop / CONVERSATION_ROW_HEIGHT_PX) - CONVERSATION_OVERSCAN_ROWS,
+    );
+    const count =
+      Math.ceil(height / CONVERSATION_ROW_HEIGHT_PX) + CONVERSATION_OVERSCAN_ROWS * 2;
+    return conversations.slice(start, start + count).map((conversation, offset) => {
+      const index = start + offset;
+      return { conversation, top: index * CONVERSATION_ROW_HEIGHT_PX };
+    });
+  }, [conversations, virtualized, viewport.height, viewport.scrollTop]);
+
+  return (
+    <div
+      ref={listRef}
+      className={`chat-history-list${virtualized ? ' is-virtualized' : ''}`}
+      data-testid="conversation-list"
+    >
+      {totalConversations === 0 || conversations.length === 0 ? (
+        <div className="chat-history-empty">
+          {t('chat.emptyConversations')}
+        </div>
+      ) : virtualized ? (
+        <div
+          className="chat-history-virtual-spacer"
+          style={{ height: conversations.length * CONVERSATION_ROW_HEIGHT_PX }}
+        >
+          {visibleRows.map(({ conversation, top }) => (
+            <div
+              key={conversation.id}
+              className="chat-history-virtual-row"
+              style={{ transform: `translateY(${top}px)` }}
+            >
+              <ConversationRow
+                conversation={conversation}
+                active={conversation.id === activeConversationId}
+                messageCount={conversationMessageCount(
+                  conversation,
+                  activeConversationId,
+                  activeMessageCount,
+                )}
+                onSelect={() => onSelect(conversation.id)}
+                onDelete={() => onDelete(conversation.id)}
+                onRename={onRename}
+                t={t}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        visibleRows.map(({ conversation }) => (
+          <ConversationRow
+            key={conversation.id}
+            conversation={conversation}
+            active={conversation.id === activeConversationId}
+            messageCount={conversationMessageCount(
+              conversation,
+              activeConversationId,
+              activeMessageCount,
+            )}
+            onSelect={() => onSelect(conversation.id)}
+            onDelete={() => onDelete(conversation.id)}
+            onRename={onRename}
+            t={t}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+function filterConversations(
+  conversations: Conversation[],
+  query: string,
+  t: TranslateFn,
+): Conversation[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) return conversations;
+  return conversations.filter((conversation) => {
+    const title = conversation.title || t('chat.untitledConversation');
+    const meta = conversationMetaLabel(conversation, t);
+    return `${title} ${conversation.id} ${meta}`.toLocaleLowerCase().includes(normalized);
+  });
+}
+
+function conversationMessageCount(
+  conversation: Conversation,
+  activeConversationId: string | null,
+  activeMessageCount: number,
+): number | null {
+  if (conversation.id === activeConversationId) return activeMessageCount;
+  return typeof conversation.messageCount === 'number' ? conversation.messageCount : null;
+}
+
+function compactCount(value: number): string {
+  if (value < 1000) return String(value);
+  const compact = Math.floor(value / 100) / 10;
+  return `${compact}k`;
+}
+
 function ConversationRow({
   conversation,
   active,
+  messageCount,
   onSelect,
   onDelete,
   onRename,
@@ -1902,6 +2490,7 @@ function ConversationRow({
 }: {
   conversation: Conversation;
   active: boolean;
+  messageCount: number | null;
   onSelect: () => void;
   onDelete: () => void;
   onRename?: (id: string, title: string) => void;
@@ -1973,7 +2562,18 @@ function ConversationRow({
           {displayTitle}
         </button>
       )}
-      <span className="chat-conv-item-meta">{conversationMetaLabel(conversation, t)}</span>
+      <span className="chat-conv-item-meta">
+        {messageCount !== null ? (
+          <span
+            className="chat-conv-message-count"
+            data-testid={`conversation-message-count-${conversation.id}`}
+          >
+            <Icon name="comment" size={11} />
+            {compactCount(messageCount)}
+          </span>
+        ) : null}
+        <span>{conversationMetaLabel(conversation, t)}</span>
+      </span>
       <button
         type="button"
         className="chat-conv-item-del"
@@ -2024,10 +2624,16 @@ function UserMessageImpl({
   activePluginSnapshot?: AppliedPluginSnapshot | null;
   activeDesignSystem?: DesignSystemSummary | null;
 }) {
-  const attachments = message.attachments ?? [];
+  const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
   const commentAttachments = message.commentAttachments ?? [];
+  const workspaceItems = message.runContext?.workspaceItems ?? [];
   const messagePluginSnapshot = message.appliedPluginSnapshot ?? activePluginSnapshot ?? null;
-  const hasRunContext = Boolean(message.sessionMode || messagePluginSnapshot || activeDesignSystem);
+  const hasRunContext = Boolean(
+    message.sessionMode ||
+      workspaceItems.length > 0 ||
+      messagePluginSnapshot ||
+      activeDesignSystem,
+  );
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -2062,6 +2668,9 @@ function UserMessageImpl({
           {message.sessionMode ? (
             <MessageSessionModeChip mode={message.sessionMode} t={t} />
           ) : null}
+          {workspaceItems.map((item) => (
+            <ActiveWorkspaceContextChip key={`${item.kind}:${item.id}`} item={item} />
+          ))}
           {messagePluginSnapshot ? (
             <ActivePluginChip snapshot={messagePluginSnapshot} t={t} />
           ) : null}
@@ -2219,6 +2828,81 @@ function ActiveDesignSystemChip({
       ) : null}
     </div>
   );
+}
+
+function ActiveWorkspaceContextChip({ item }: { item: WorkspaceContextItem }) {
+  return (
+    <div
+      className={`msg-plugin-chip msg-plugin-chip--workspace msg-plugin-chip--workspace-${item.kind}`}
+      data-testid="msg-workspace-context-chip"
+      title={workspaceContextTitle(item)}
+    >
+      <span className="msg-plugin-chip__icon" aria-hidden>
+        <Icon name={workspaceContextIcon(item)} size={12} />
+      </span>
+      <span className="msg-plugin-chip__label">
+        <span className="msg-plugin-chip__kind">Current</span>
+        <span className="msg-plugin-chip__title">{item.label}</span>
+      </span>
+    </div>
+  );
+}
+
+function workspaceContextIcon(item: WorkspaceContextItem): IconName {
+  if (item.kind === 'browser') return 'globe';
+  if (item.kind === 'folder' || item.kind === 'design-files') return 'folder';
+  if (item.kind === 'terminal') return 'terminal';
+  if (item.kind === 'side-chat') return 'comment';
+  if (item.kind === 'design-system') return 'blocks';
+  return 'file';
+}
+
+function workspaceContextTitle(item: WorkspaceContextItem): string {
+  return [
+    workspaceContextKindLabel(item.kind),
+    item.path ? `path: ${item.path}` : null,
+    item.absolutePath ? `absolute: ${item.absolutePath}` : null,
+    item.url ? `url: ${item.url}` : null,
+    item.title ? `title: ${item.title}` : null,
+  ].filter(Boolean).join(' | ');
+}
+
+function workspaceContextKindLabel(kind: WorkspaceContextItem['kind']): string {
+  switch (kind) {
+    case 'browser':
+      return 'Browser';
+    case 'design-files':
+      return 'Design files';
+    case 'design-system':
+      return 'Design system';
+    case 'folder':
+      return 'Folder';
+    case 'terminal':
+      return 'Terminal';
+    case 'side-chat':
+      return 'Side chat';
+    case 'live-artifact':
+      return 'Live artifact';
+    case 'file':
+    default:
+      return 'File';
+  }
+}
+
+function sortChatAttachmentsForDisplay(attachments: ChatAttachment[]): ChatAttachment[] {
+  return attachments
+    .map((attachment, index) => ({ attachment, index }))
+    .sort((a, b) => {
+      const aOrder = typeof a.attachment.order === 'number' && Number.isFinite(a.attachment.order)
+        ? a.attachment.order
+        : a.index;
+      const bOrder = typeof b.attachment.order === 'number' && Number.isFinite(b.attachment.order)
+        ? b.attachment.order
+        : b.index;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.attachment);
 }
 
 function DaySeparator({ ts }: { ts: number | undefined }) {

@@ -217,11 +217,33 @@ describe('preview comment persistence', () => {
       role: 'user',
       content: 'make the deck',
       sessionMode: 'design',
+      runContext: {
+        workspaceItems: [
+          {
+            id: 'browser:tab-1',
+            kind: 'browser',
+            label: 'Dribbble',
+            tabId: 'tab-1',
+            url: 'https://dribbble.com/',
+          },
+        ],
+      },
       appliedPluginSnapshot,
     });
 
     expect(listMessages(db, 'conversation-1')[0]).toMatchObject({
       sessionMode: 'design',
+      runContext: {
+        workspaceItems: [
+          {
+            id: 'browser:tab-1',
+            kind: 'browser',
+            label: 'Dribbble',
+            tabId: 'tab-1',
+            url: 'https://dribbble.com/',
+          },
+        ],
+      },
       appliedPluginSnapshot,
     });
   });

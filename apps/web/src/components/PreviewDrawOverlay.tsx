@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type PointerEvent, type ReactNode, type WheelEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
@@ -26,6 +26,7 @@ interface PreviewSnapshot {
   w: number;
   h: number;
 }
+type CaptureFrameRect = Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>;
 
 export const ANNOTATION_EVENT = 'opendesign:annotation';
 export type AnnotationAction = 'draft' | 'queue' | 'send';
@@ -50,7 +51,9 @@ interface Props {
   onActiveChange?: (active: boolean) => void;
   captureTarget?: CaptureTarget | null;
   captureSnapshot?: () => Promise<PreviewSnapshot | null>;
+  captureFrameRect?: () => CaptureFrameRect | null;
   filePath?: string;
+  hideChrome?: boolean;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
 }
@@ -66,7 +69,9 @@ export function PreviewDrawOverlay({
   onActiveChange,
   captureTarget = null,
   captureSnapshot,
+  captureFrameRect,
   filePath,
+  hideChrome = false,
   sendDisabled = false,
   sendDisabledReason,
 }: Props) {
@@ -447,18 +452,28 @@ export function PreviewDrawOverlay({
     });
   }
 
+  function snapshotFrameRect(): CaptureFrameRect | null {
+    return (
+      captureFrameRect?.() ??
+      (captureSnapshot
+        ? wrapRef.current?.getBoundingClientRect()
+        : activePreviewIframe()?.getBoundingClientRect()) ??
+      null
+    );
+  }
+
   async function requestSnapshot(): Promise<PreviewSnapshot | null> {
     if (captureSnapshot) {
       // The host's captureSnapshot is a compositor screenshot of the on-screen
       // region, which would otherwise include this overlay's own strokes +
       // toolbar. Hide them for the capture; compositeWithBackground re-paints
       // the marks onto the result afterwards.
-      setCapturing(true);
+      flushSync(() => setCapturing(true));
       try {
         await waitForOverlayHidden();
         return await captureSnapshot();
       } finally {
-        setCapturing(false);
+        flushSync(() => setCapturing(false));
       }
     }
     const iframe = snapshotHostIframe();
@@ -515,9 +530,7 @@ export function PreviewDrawOverlay({
   }
 
   async function compositeWithBackground(snap: PreviewSnapshot): Promise<Blob | null> {
-    const frameRect = captureSnapshot
-      ? wrapRef.current?.getBoundingClientRect()
-      : activePreviewIframe()?.getBoundingClientRect();
+    const frameRect = snapshotFrameRect();
     if (!frameRect) return null;
     const rect = frameRect;
     const out = document.createElement('canvas');
@@ -637,6 +650,7 @@ export function PreviewDrawOverlay({
   const canSend = canSubmit && !sendDisabled;
   const canUndo = (undoCount > 0 || hasBox) && !sending;
   const canRedo = redoCount > 0 && !sending;
+  const chromeHidden = capturing || hideChrome;
 
   return (
     <div
@@ -662,7 +676,7 @@ export function PreviewDrawOverlay({
             inset: 0,
             pointerEvents: overlayPointer,
             cursor: active ? 'crosshair' : 'default',
-            visibility: capturing ? 'hidden' : 'visible',
+            visibility: chromeHidden ? 'hidden' : 'visible',
           }}
         />
       ) : null}
@@ -691,6 +705,7 @@ export function PreviewDrawOverlay({
                 pointerEvents: 'none',
                 fontSize: 13,
                 lineHeight: 1.35,
+                visibility: chromeHidden ? 'hidden' : undefined,
               }}
             >
               <span>{captureWarning.message}</span>
@@ -716,7 +731,7 @@ export function PreviewDrawOverlay({
                 backdropFilter: 'blur(8px)',
                 zIndex: 10,
                 pointerEvents: 'auto',
-                visibility: capturing ? 'hidden' : undefined,
+                visibility: chromeHidden ? 'hidden' : undefined,
               }}
             >
               {imagePreviews.map((item, i) => (
@@ -776,6 +791,7 @@ export function PreviewDrawOverlay({
             </div>
           ) : null}
           <div
+            className="preview-draw-toolbar"
             style={{
               position: 'absolute',
               left: '50%',
@@ -793,7 +809,7 @@ export function PreviewDrawOverlay({
               zIndex: 10,
               pointerEvents: 'auto',
               fontSize: 13,
-              visibility: capturing ? 'hidden' : undefined,
+              visibility: chromeHidden ? 'hidden' : undefined,
             }}
           >
           <button

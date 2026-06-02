@@ -1982,6 +1982,47 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   color: var(--text-muted);
   font-weight: 600;
 }
+.chat-history-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 8px 4px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-faint);
+}
+.chat-history-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.chat-history-search input {
+  min-width: 0;
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+.chat-history-search input::placeholder { color: var(--text-faint); }
+.chat-history-search-clear {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-faint);
+}
+.chat-history-search-clear:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
 .chat-history-new {
   display: inline-flex;
   align-items: center;
@@ -2000,6 +2041,21 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   gap: 1px;
   padding: 4px 6px 6px;
   overflow-y: auto;
+}
+.chat-history-list.is-virtualized {
+  gap: 0;
+}
+.chat-history-virtual-spacer {
+  position: relative;
+  flex: 0 0 auto;
+}
+.chat-history-virtual-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 38px;
+  will-change: transform;
 }
 .chat-history-empty {
   padding: 16px 8px;
@@ -2035,9 +2091,19 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   text-overflow: ellipsis;
 }
 .chat-conv-item-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
   font-size: 10.5px;
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
+}
+.chat-conv-message-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
 }
 .chat-conv-item-del {
   width: 22px;

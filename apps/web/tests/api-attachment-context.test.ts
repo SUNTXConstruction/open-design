@@ -67,6 +67,25 @@ describe('historyWithApiAttachmentContext', () => {
     expect(content).toContain('path: uploads/second.png');
   });
 
+  it('uses the explicit user-visible order before numbering attachments', async () => {
+    const history = await historyWithApiAttachmentContext(
+      [
+        userMessage('msg-1', 'Compare the first and second image', [
+          { path: 'uploads/second.png', name: 'second.png', kind: 'image', order: 1 },
+          { path: 'uploads/first.png', name: 'first.png', kind: 'image', order: 0 },
+        ]),
+      ],
+      'msg-1',
+      'project-1',
+      [projectFile('uploads/first.png', 'image'), projectFile('uploads/second.png', 'image')],
+    );
+
+    const content = history[0]?.content ?? '';
+    expect(content.indexOf('### Attachment 1: first.png')).toBeLessThan(
+      content.indexOf('### Attachment 2: second.png'),
+    );
+  });
+
   it('reads raw text attachments with a cache buster from file metadata', async () => {
     mockedFetchProjectFileText.mockResolvedValue('const answer = 42;');
 

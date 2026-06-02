@@ -19,6 +19,63 @@ afterEach(() => {
   vi.mocked(requestPreviewSnapshot).mockClear();
 });
 
+function installImageCompositeMocks() {
+  const originalImage = globalThis.Image;
+  class MockImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+
+    set src(_value: string) {
+      window.setTimeout(() => this.onload?.(), 0);
+    }
+  }
+
+  Object.defineProperty(globalThis, 'Image', {
+    configurable: true,
+    value: MockImage,
+    writable: true,
+  });
+  const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => ({
+    beginPath: vi.fn(),
+    clearRect: vi.fn(),
+    drawImage: vi.fn(),
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    lineCap: 'round',
+    lineJoin: 'round',
+    lineTo: vi.fn(),
+    lineWidth: 1,
+    measureText: vi.fn(() => ({ width: 0 })),
+    moveTo: vi.fn(),
+    restore: vi.fn(),
+    save: vi.fn(),
+    scale: vi.fn(),
+    setLineDash: vi.fn(),
+    stroke: vi.fn(),
+    strokeRect: vi.fn(),
+    fillStyle: '',
+    font: '',
+    strokeStyle: '',
+  }) as unknown as CanvasRenderingContext2D) as unknown as HTMLCanvasElement['getContext']);
+  const toBlob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback: BlobCallback) => {
+    callback(new Blob(['png'], { type: 'image/png' }));
+  });
+
+  return () => {
+    getContext.mockRestore();
+    toBlob.mockRestore();
+    if (originalImage) {
+      Object.defineProperty(globalThis, 'Image', {
+        configurable: true,
+        value: originalImage,
+        writable: true,
+      });
+    } else {
+      delete (globalThis as { Image?: unknown }).Image;
+    }
+  };
+}
+
 describe('PreviewDrawOverlay', () => {
   it('queues a note when Enter submits from the draw input', async () => {
     const annotation = vi.fn();
@@ -224,5 +281,39 @@ describe('PreviewDrawOverlay', () => {
     await waitFor(() => expect(snapshot).toHaveBeenCalled());
     const usedIframe = snapshot.mock.calls[0]?.[0] as HTMLIFrameElement;
     expect(usedIframe.getAttribute('data-od-render-mode')).toBe('srcdoc');
+  });
+
+  it('hides draw chrome before a compositor annotation snapshot', async () => {
+    const restoreCompositeMocks = installImageCompositeMocks();
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    let host: HTMLElement | null = null;
+    const captureSnapshot = vi.fn(async () => {
+      expect(host?.querySelector('canvas')?.style.visibility).toBe('hidden');
+      expect(host?.querySelector<HTMLElement>('.preview-draw-toolbar')?.style.visibility).toBe('hidden');
+      return { dataUrl: 'data:image/png;base64,cG5n', w: 10, h: 10 };
+    });
+
+    try {
+      const { container, getByRole } = render(
+        <PreviewDrawOverlay active captureViewport captureSnapshot={captureSnapshot}>
+          <div style={{ width: 320, height: 200 }} />
+        </PreviewDrawOverlay>,
+      );
+      host = container;
+
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(captureSnapshot).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
+      expect(container.querySelector<HTMLElement>('.preview-draw-toolbar')?.style.visibility).toBe('');
+    } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+      restoreCompositeMocks();
+    }
   });
 });

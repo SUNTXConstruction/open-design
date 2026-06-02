@@ -235,32 +235,73 @@ describe('ChatPane conversation title', () => {
     expect(screen.getByTestId('chat-active-conversation-title').textContent).toBe('chat.conversationsHeading');
     expect(onRenameConversation).not.toHaveBeenCalled();
   });
+
+  it('filters the conversation history list by title', () => {
+    renderChatPane({
+      conversations: [
+        conversation({ id: 'conv-1', title: 'Contract review draft' }),
+        conversation({ id: 'conv-2', title: 'Deck polish notes' }),
+      ],
+      activeConversationId: 'conv-1',
+    });
+
+    fireEvent.click(screen.getByTestId('conversation-history-trigger'));
+    fireEvent.change(screen.getByTestId('conversation-history-search'), {
+      target: { value: 'deck' },
+    });
+
+    expect(screen.queryByTestId('conversation-item-conv-1')).toBeNull();
+    expect(screen.getByTestId('conversation-item-conv-2')).toBeTruthy();
+  });
+
+  it('shows conversation message counts in history metadata', () => {
+    renderChatPane({
+      messages: [
+        { id: 'user-1', role: 'user', content: 'hello' },
+        { id: 'assistant-1', role: 'assistant', content: 'done' },
+      ],
+      conversations: [
+        conversation({ id: 'conv-1', title: 'Active', messageCount: 99 }),
+        conversation({ id: 'conv-2', title: 'Older', messageCount: 7 }),
+      ],
+      activeConversationId: 'conv-1',
+    });
+
+    fireEvent.click(screen.getByTestId('conversation-history-trigger'));
+
+    expect(screen.getByTestId('conversation-message-count-conv-1').textContent).toContain('2');
+    expect(screen.getByTestId('conversation-message-count-conv-2').textContent).toContain('7');
+  });
 });
 
 function renderChatPane({
+  messages = [],
   conversations,
   activeConversationId,
   onRenameConversation,
 }: {
+  messages?: ChatMessage[];
   conversations: Conversation[];
   activeConversationId: string | null;
   onRenameConversation?: (id: string, title: string) => void;
 }) {
-  return render(chatPaneElement({ conversations, activeConversationId, onRenameConversation }));
+  return render(chatPaneElement({ messages, conversations, activeConversationId, onRenameConversation }));
 }
 
 function chatPaneElement({
+  messages = [],
   conversations,
   activeConversationId,
   onRenameConversation,
 }: {
+  messages?: ChatMessage[];
   conversations: Conversation[];
   activeConversationId: string | null;
   onRenameConversation?: ((id: string, title: string) => void) | undefined;
 }) {
   return (
     <ChatPane
-      messages={[]}
+      messages={messages}
       streaming={false}
       error={null}
       projectId="project-1"
@@ -277,11 +318,12 @@ function chatPaneElement({
   );
 }
 
-function conversation(input: { id: string; title: string | null }): Conversation {
+function conversation(input: { id: string; title: string | null; messageCount?: number }): Conversation {
   return {
     id: input.id,
     projectId: 'project-1',
     title: input.title,
+    messageCount: input.messageCount,
     createdAt: 1,
     updatedAt: 1,
   };

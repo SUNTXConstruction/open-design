@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
+import { flushSync } from 'react-dom';
 import {
   clearHostBrowserData,
   isOpenDesignHostAvailable,
@@ -17,9 +18,11 @@ import {
   writeProjectBase64File,
   writeProjectTextFile,
 } from '../providers/registry';
+import { useT } from '../i18n';
 import { captureHostRegionSnapshot } from '../runtime/exports';
 import { Icon } from './Icon';
 import { PreviewDrawOverlay } from './PreviewDrawOverlay';
+import { RemixIcon } from './RemixIcon';
 
 type BrowserHistoryEntry = {
   iconUrl?: string;
@@ -396,6 +399,7 @@ export function DesignBrowserPanel({
   onRefreshFiles,
   sendDisabled = false,
 }: DesignBrowserPanelProps) {
+  const t = useT();
   const desktopHostAvailable = isOpenDesignHostAvailable();
   const initialState = initialBrowserState(initialUrl, initialTitle);
   // `loadUrl` is the navigation target bound to the <webview>/<iframe> `src`.
@@ -417,6 +421,7 @@ export function DesignBrowserPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [webviewNode, setWebviewNode] = useState<WebviewElement | null>(null);
   const [drawOverlayOpen, setDrawOverlayOpen] = useState(false);
+  const [captureChromeHidden, setCaptureChromeHidden] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [savingAction, setSavingAction] = useState<'brief' | 'screenshot' | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
@@ -809,6 +814,7 @@ export function DesignBrowserPanel({
     // Close the dropdown first so it cannot appear in a host compositor capture
     // (which screenshots the on-screen window region, not the guest surface).
     setMenuOpen(false);
+    if (drawOverlayOpen) flushSync(() => setCaptureChromeHidden(true));
     try {
       // Let the dropdown unmount + repaint before the compositor capture.
       await new Promise<void>((resolve) =>
@@ -835,6 +841,7 @@ export function DesignBrowserPanel({
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Screenshot failed');
     } finally {
+      setCaptureChromeHidden(false);
       setSavingAction(null);
       setMenuOpen(false);
     }
@@ -1086,21 +1093,21 @@ export function DesignBrowserPanel({
         <div className="db-actions">
           {desktopHostAvailable ? (
             <IconTooltipButton
-              label="Copy screenshot to clipboard"
+              label={t('fileViewer.screenshot')}
               disabled={isBlank || savingAction != null}
               onClick={takeScreenshot}
             >
-              <Icon name="image" size={15} />
+              <RemixIcon name="screenshot-2-line" size={15} />
             </IconTooltipButton>
           ) : null}
           {desktopHostAvailable ? (
             <IconTooltipButton
-              label="Annotate page"
+              label={t('fileViewer.mark')}
               disabled={isBlank}
               className={drawOverlayOpen ? 'is-active' : ''}
               onClick={() => setDrawOverlayOpen((open) => !open)}
             >
-              <Icon name="pencil" size={15} />
+              <RemixIcon name="mark-pen-line" size={15} />
             </IconTooltipButton>
           ) : null}
           <IconTooltipButton
@@ -1161,10 +1168,12 @@ export function DesignBrowserPanel({
           active={drawOverlayOpen}
           captureViewport={!isBlank}
           captureSnapshot={desktopHostAvailable ? captureBrowserSnapshot : undefined}
+          captureFrameRect={() => webviewNode?.getBoundingClientRect() ?? null}
           filePath={isBlank ? undefined : currentUrl}
+          hideChrome={captureChromeHidden}
           onActiveChange={setDrawOverlayOpen}
           sendDisabled={sendDisabled}
-          sendDisabledReason="A task is currently running"
+          sendDisabledReason={t('chat.annotationSendDisabledReason')}
         >
           {isBlank ? (
             <DesignBrowserStart
