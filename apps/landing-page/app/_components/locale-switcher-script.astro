@@ -71,6 +71,13 @@ const script = `
     for (const link of document.querySelectorAll('[data-locale-link]')) {
       if (link.dataset.localeBound === 'true') continue;
       link.dataset.localeBound = 'true';
+      // The header's locale links are server-rendered with a hardcoded '/'
+      // href (the React <Header /> has no access to Astro.url), so on
+      // sub-pages like /blog/x/ they would all jump to the localized
+      // HOMEPAGE. Rewrite each to the current page's localized path using
+      // the same targetFor() the picker already relies on.
+      const linkCode = link.dataset.localeCode;
+      if (linkCode) link.setAttribute('href', targetFor(linkCode));
       link.addEventListener('click', (event) => {
         if (event.defaultPrevented) return;
         if (event.button !== 0) return;

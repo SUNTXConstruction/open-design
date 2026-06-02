@@ -2651,9 +2651,9 @@ footer {
 @media (max-width: 1080px) {
   .nav-toggle { display: inline-flex; }
   .brand { white-space: nowrap; }
-  /* Hide AMR, Download + Discord/X icon buttons from the bar (Star stays). */
+  /* Hide AMR, Star + Discord/X icon buttons from the bar (Download stays). */
   .nav-side .nav-amr { display: none; }
-  .nav-side .nav-cta.ghost { display: none; }
+  .nav-side .nav-cta.ghost:not(.is-download) { display: none; }
   .nav-side .nav-icon { display: none; }
   /* Collapse the nav <ul> into a panel that drops below the header bar.
    * The header is `position: sticky`, so absolute-positioning the panel
@@ -2805,13 +2805,13 @@ footer {
   .foot-bottom { flex-direction: column; align-items: flex-start; gap: 12px; }
   .foot-bottom .right { flex-wrap: wrap; gap: 12px 20px; }
   /* nav — at ≤880px tighten padding; nav-links stay reachable through
-   * the hamburger panel introduced at ≤1080px. Brand meta, Download,
-   * and the Discord/X icon buttons stay hidden; Star CTA still pings
-   * in the bar. */
+   * the hamburger panel introduced at ≤1080px. Brand meta, Star, AMR,
+   * and the Discord/X icon buttons stay hidden; Download CTA stays
+   * reachable in the bar. */
   .nav { padding: 16px 0; }
   .brand-meta { display: none; }
   .nav-side .nav-amr { display: none; }
-  .nav-side .nav-cta.ghost { display: none; }
+  .nav-side .nav-cta.ghost:not(.is-download) { display: none; }
   .nav-side .nav-icon { display: none; }
 }
 @media (max-width: 640px) {
