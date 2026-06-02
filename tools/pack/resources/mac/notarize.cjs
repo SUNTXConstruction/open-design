@@ -1,5 +1,26 @@
 const path = require("node:path");
 
+const TRANSIENT_NOTARY_PATTERNS = [
+  "abortedUpload",
+  "deadlineExceeded",
+  "HTTPClientError",
+];
+
+function parsePositiveInteger(value, fallback) {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isTransientNotaryError(error) {
+  const text = error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error);
+  return TRANSIENT_NOTARY_PATTERNS.some((pattern) => text.includes(pattern));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 module.exports = async function notarize(context) {
   if (context.electronPlatformName !== "darwin") {
     return;
@@ -42,9 +63,24 @@ module.exports = async function notarize(context) {
   const productFilename = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${productFilename}.app`);
   const { notarize } = await import("@electron/notarize");
+  const attempts = parsePositiveInteger(process.env.APPLE_NOTARY_ATTEMPTS, 2);
+  const retryDelayMs = parsePositiveInteger(process.env.APPLE_NOTARY_RETRY_DELAY_MS, 15000);
 
-  await notarize({
-    appPath,
-    ...credentials,
-  });
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await notarize({
+        appPath,
+        ...credentials,
+      });
+      return;
+    } catch (error) {
+      if (attempt >= attempts || !isTransientNotaryError(error)) {
+        throw error;
+      }
+      console.error(
+        `[tools-pack notarize] transient notarytool failure on attempt ${attempt}/${attempts}; retrying in ${retryDelayMs}ms`,
+      );
+      await sleep(retryDelayMs);
+    }
+  }
 };

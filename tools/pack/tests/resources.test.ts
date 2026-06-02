@@ -17,6 +17,8 @@ import process from "node:process";
 import { copyBundledResourceTrees } from "../src/resources.js";
 import { copyOptionalVelaCliBinary, resolveOptionalVelaCliBinary } from "../src/vela-cli.js";
 
+const workspaceRoot = new URL("../../..", import.meta.url);
+
 async function writeFakeOpenCodeCompanion(
   source: string,
   content = "#!/bin/sh\nexit 0\n",
@@ -138,6 +140,21 @@ describe("copyBundledResourceTrees", () => {
     } finally {
       await rm(root, { force: true, recursive: true });
     }
+  });
+});
+
+describe("mac notarize hook", () => {
+  it("retries transient notarytool upload failures", async () => {
+    const hook = await readFile(
+      new URL("tools/pack/resources/mac/notarize.cjs", workspaceRoot),
+      "utf8",
+    );
+
+    expect(hook).toContain("APPLE_NOTARY_ATTEMPTS");
+    expect(hook).toContain("abortedUpload");
+    expect(hook).toContain("deadlineExceeded");
+    expect(hook).toContain("HTTPClientError");
+    expect(hook).toContain("transient notarytool failure");
   });
 });
 
