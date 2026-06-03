@@ -100,8 +100,8 @@ import { RELEASE_METADATA_URL } from '../_lib/release-metadata';
       }
 
       // Stable release metadata powers every "v0.x.y" badge on the page.
-      // Fetch it from R2 in the browser so already-deployed static pages pick
-      // up new stable releases without a landing-page redeploy.
+      // Fetch it through the landing origin so deployed static pages stay
+      // fresh without depending on cross-origin R2 CORS headers.
       const versionSlots = document.querySelectorAll('[data-github-version]');
       if (versionSlots.length === 0) return;
       fetch(RELEASE_METADATA_URL, {

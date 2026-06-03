@@ -374,9 +374,9 @@ const pageHtml = renderToStaticMarkup(
 
           // Stable release metadata powers every "v0.x.y" badge on the page
           // (topbar pulse, hero CTA-foot, footer download) AND the per-OS
-          // direct download CTAs. Fetch it from R2 in the browser so
-          // already-deployed static pages pick up new stable releases without
-          // a landing-page redeploy.
+          // direct download CTAs. Fetch it through the landing origin so
+          // deployed static pages stay fresh without depending on cross-origin
+          // R2 CORS headers.
           const versionSlots = document.querySelectorAll('[data-github-version]');
           const hasDownloadCtas = document.querySelector('[data-download-cta]') !== null;
           if (versionSlots.length === 0 && !hasDownloadCtas) return;
