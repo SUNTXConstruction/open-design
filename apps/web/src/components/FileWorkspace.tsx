@@ -115,6 +115,10 @@ interface Props {
   // Open the named file AND surface its Share/Export menu. Drives the chat-side
   // "Share" next-step action without a dedicated share backend.
   shareRequest?: { name: string; nonce: number } | null;
+  // Flip a deck preview to a given slide when a queued chat send starts. Mirrors
+  // `shareRequest`: the named file is activated (if open) and the matching
+  // FileViewer consumes the nonce to navigate.
+  slideNavRequest?: { name: string; slideIndex: number; nonce: number } | null;
   liveArtifactEvents?: LiveArtifactEventItem[];
   designSystemActivityEvents?: AgentEvent[];
   // Persisted set of open tabs + active tab. Owned by ProjectView so the
@@ -361,6 +365,7 @@ export function FileWorkspace({
   commentSendDisabled = false,
   openRequest,
   shareRequest,
+  slideNavRequest,
   liveArtifactEvents = [],
   designSystemActivityEvents = [],
   tabsState,
@@ -771,6 +776,18 @@ export function FileWorkspace({
     setActiveTab(name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shareRequest]);
+
+  // Slide-nav request: if the named deck is an open tab, bring it forward so the
+  // matching FileViewer below is mounted and can consume the nonce. We do not
+  // open a closed file — auto-flipping a slide is a follow-along, not a reason
+  // to yank the user into a tab they never opened.
+  useEffect(() => {
+    if (!slideNavRequest) return;
+    const name = slideNavRequest.name;
+    if (!name || !persistedTabs.includes(name)) return;
+    setActiveTab(name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slideNavRequest]);
 
   // Focus the Questions tab when the parent bumps the nonce (banner click in
   // chat, or a freshly generated form). The tab is transient — not added to
@@ -2237,6 +2254,11 @@ export function FileWorkspace({
             shareRequest={
               shareRequest && shareRequest.name === activeFile.name
                 ? { nonce: shareRequest.nonce }
+                : null
+            }
+            slideNavRequest={
+              slideNavRequest && slideNavRequest.name === activeFile.name
+                ? { slideIndex: slideNavRequest.slideIndex, nonce: slideNavRequest.nonce }
                 : null
             }
           />
