@@ -212,6 +212,17 @@ function normalizeTabsState(state: WorkspaceTabsState): WorkspaceTabsState {
     });
   }
 
+  // Pin the Home tab to the leftmost position (Figma-style). It is the one
+  // permanent, non-closable tab; project / marketplace tabs always sit to its
+  // right in insertion order.
+  const homeIndex = sourceTabs.findIndex(
+    (tab) => tab.kind === 'entry' && tab.view === 'home',
+  );
+  if (homeIndex > 0) {
+    const [homeTab] = sourceTabs.splice(homeIndex, 1);
+    sourceTabs = [homeTab!, ...sourceTabs];
+  }
+
   const usedIds = new Set<string>();
   let activeTabId = '';
   let activeClaimed = false;
@@ -704,6 +715,9 @@ export function WorkspaceTabsBar({ route, projects }: Props) {
     const normalized = normalizeTabsState(state);
     const closingIndex = normalized.tabs.findIndex((tab) => tab.id === tabId);
     if (closingIndex < 0) return;
+    // The Home tab is permanent — never close it.
+    const closingTab = normalized.tabs[closingIndex]!;
+    if (closingTab.kind === 'entry' && closingTab.view === 'home') return;
     let nextRoute: Route | null = null;
     const nextTabs = normalized.tabs.filter((tab) => tab.id !== tabId);
     let nextState: WorkspaceTabsState;
@@ -851,6 +865,9 @@ export function WorkspaceTabsBar({ route, projects }: Props) {
         {state.tabs.map((tab) => {
           const display = displayTabById.get(tab.id) ?? displayTabFor(tab, projectById, t);
           const active = tab.id === state.activeTabId;
+          // The Home tab is permanent and pinned leftmost: it cannot be closed
+          // or dragged out of the first slot.
+          const isHome = tab.kind === 'entry' && tab.view === 'home';
           const dragOverClass =
             dragOverTarget?.tabId === tab.id && draggingTabId !== tab.id
               ? ` is-drag-over-${dragOverTarget.edge}`
@@ -858,12 +875,12 @@ export function WorkspaceTabsBar({ route, projects }: Props) {
           return (
             <div
               key={tab.id}
-              className={`workspace-tab${active ? ' is-active' : ''}${draggingTabId === tab.id ? ' is-dragging' : ''}${dragOverClass}`}
+              className={`workspace-tab${active ? ' is-active' : ''}${isHome ? ' is-pinned' : ''}${draggingTabId === tab.id ? ' is-dragging' : ''}${dragOverClass}`}
               data-workspace-tab-id={tab.id}
               role="tab"
               aria-selected={active}
               aria-describedby={hoverPreview?.tabId === tab.id ? 'workspace-tab-preview' : undefined}
-              draggable={state.tabs.length > 1}
+              draggable={!isHome && state.tabs.length > 1}
               onDragStart={(event) => handleTabDragStart(tab.id, event)}
               onDragEnd={handleTabDragEnd}
               onMouseEnter={(event) => scheduleHoverPreview(tab.id, event.currentTarget)}
@@ -884,17 +901,19 @@ export function WorkspaceTabsBar({ route, projects }: Props) {
                 </span>
                 <span className="workspace-tab__label">{display.title}</span>
               </button>
-              <button
-                type="button"
-                className="workspace-tab__close od-tooltip"
-                aria-label={t('common.close')}
-                title={t('common.close')}
-                data-tooltip={t('common.close')}
-                data-tooltip-placement="bottom"
-                onClick={() => closeTab(tab.id)}
-              >
-                <Icon name="close" size={10} />
-              </button>
+              {isHome ? null : (
+                <button
+                  type="button"
+                  className="workspace-tab__close od-tooltip"
+                  aria-label={t('common.close')}
+                  title={t('common.close')}
+                  data-tooltip={t('common.close')}
+                  data-tooltip-placement="bottom"
+                  onClick={() => closeTab(tab.id)}
+                >
+                  <Icon name="close" size={10} />
+                </button>
+              )}
             </div>
           );
         })}
@@ -973,17 +992,19 @@ export function WorkspaceTabsBar({ route, projects }: Props) {
                               <span className="workspace-tabs-list__meta">{display.meta}</span>
                             </span>
                           </button>
-                          <button
-                            type="button"
-                            className="workspace-tabs-list__close od-tooltip"
-                            onClick={() => closeTab(display.id)}
-                            title={t('common.close')}
-                            data-tooltip={t('common.close')}
-                            data-tooltip-placement="left"
-                            aria-label={t('common.close')}
-                          >
-                            <Icon name="close" size={11} />
-                          </button>
+                          {display.tab.kind === 'entry' && display.tab.view === 'home' ? null : (
+                            <button
+                              type="button"
+                              className="workspace-tabs-list__close od-tooltip"
+                              onClick={() => closeTab(display.id)}
+                              title={t('common.close')}
+                              data-tooltip={t('common.close')}
+                              data-tooltip-placement="left"
+                              aria-label={t('common.close')}
+                            >
+                              <Icon name="close" size={11} />
+                            </button>
+                          )}
                         </div>
                       );
                     })
