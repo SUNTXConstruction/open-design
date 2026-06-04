@@ -47,6 +47,24 @@ describe('subChipsForChip', () => {
   it('returns an empty list when the chip has no installed plugins', () => {
     expect(subChipsForChip('prototype', [])).toEqual([]);
   });
+
+  it('only surfaces pills for sub-categories present in the candidate list it is given', () => {
+    // Regression for the "looks unfiltered" bug: subchips must be derived from
+    // the SAME list that feeds the preset cards. A dashboard plugin that exists
+    // in the full install set but is NOT in the displayed candidate list must
+    // not produce a Dashboards pill — otherwise selecting it would filter to an
+    // empty/fallback slice.
+    const displayed = [prototypePlugin('p-land', ['landing-page'])];
+    const slugs = subChipsForChip('prototype', displayed).map((s) => s.slug);
+    expect(slugs).toEqual(['landing-marketing']);
+    expect(slugs).not.toContain('business-dashboards');
+
+    // And every pill the helper returns must filter to a non-empty slice of
+    // that same list.
+    for (const slug of slugs) {
+      expect(filterPluginsBySubChip(displayed, 'prototype', slug).length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('filterPluginsBySubChip', () => {

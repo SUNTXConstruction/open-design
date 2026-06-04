@@ -491,16 +491,20 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
         : [],
     [activeChipId, locale, pluginOptions],
   );
+  // Derive sub-category pills from the SAME list that feeds the preset cards
+  // (`activeExamplePlugins`), not the full install set. This guarantees every
+  // pill maps to at least one visible card, so selecting it always filters to
+  // a non-empty slice — no "looks unfiltered" fallback needed.
   const activeSubChips = useMemo(
-    () => subChipsForChip(activeChipId, pluginOptions),
-    [activeChipId, pluginOptions],
+    () => subChipsForChip(activeChipId, activeExamplePlugins),
+    [activeChipId, activeExamplePlugins],
   );
-  // When a sub-category pill is active, narrow the example-prompt cards to
-  // that scene; otherwise show the full chip-matched set.
+  // When a sub-category pill is active, narrow the example-prompt cards to that
+  // scene. Because the pills are derived from this very list, the slice is
+  // always non-empty for a real selection.
   const filteredExamplePlugins = useMemo(() => {
     if (!selectedSubcategory || !isSubChipParent(activeChipId)) return activeExamplePlugins;
-    const narrowed = filterPluginsBySubChip(activeExamplePlugins, activeChipId, selectedSubcategory);
-    return narrowed.length > 0 ? narrowed : activeExamplePlugins;
+    return filterPluginsBySubChip(activeExamplePlugins, activeChipId, selectedSubcategory);
   }, [activeExamplePlugins, activeChipId, selectedSubcategory]);
   const activePromptExamples = useMemo(
     () => activeChipId && activeExamplePlugins.length === 0
