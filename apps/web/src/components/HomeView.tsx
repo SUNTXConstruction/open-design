@@ -68,6 +68,7 @@ import {
   type HomePromptHandoff,
 } from './home-hero/plugin-authoring';
 import { PluginDetailsModal } from './PluginDetailsModal';
+import { HomeTemplatesReveal } from './HomeTemplatesReveal';
 import { PluginsHomeSection } from './PluginsHomeSection';
 import type { PluginLoopSubmit } from './PluginLoopHome';
 import type { FacetSelection } from './plugins-home/facets';
@@ -1361,17 +1362,21 @@ export function HomeView({
         }}
       />
 
-      <PluginsHomeSection
-        plugins={plugins}
-        loading={pluginsLoading}
-        activePluginId={active?.record.id ?? null}
-        pendingApplyId={pendingApplyId}
-        onUse={(record, action) => requestPluginContextUse(record, action)}
-        onOpenDetails={setDetailsRecord}
-        onBrowseRegistry={onBrowseRegistry}
-        preferDefaultFacet={false}
-        presetSelection={presetStartersSelection}
-      />
+      <HomeTemplatesReveal
+        enabled={!projectsLoading && projects.length === 0}
+      >
+        <PluginsHomeSection
+          plugins={plugins}
+          loading={pluginsLoading}
+          activePluginId={active?.record.id ?? null}
+          pendingApplyId={pendingApplyId}
+          onUse={(record, action) => requestPluginContextUse(record, action)}
+          onOpenDetails={setDetailsRecord}
+          onBrowseRegistry={onBrowseRegistry}
+          preferDefaultFacet={false}
+          presetSelection={presetStartersSelection}
+        />
+      </HomeTemplatesReveal>
 
       {detailsRecord ? (
         <PluginDetailsModal

@@ -26,6 +26,10 @@ interface Props {
   view: EntryView;
   onViewChange: (view: EntryView) => void;
   onNewProject: () => void;
+  /** When false the rail is collapsed (hidden off-canvas) on the entry view. */
+  open: boolean;
+  /** Collapse the rail — called after a destination is chosen or the user dismisses it. */
+  onClose: () => void;
 }
 
 interface NavButtonProps {
@@ -53,30 +57,51 @@ function NavButton({ active, ariaLabel, tooltip, onClick, testId, children }: Na
   );
 }
 
-export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
+export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }: Props) {
   const t = useT();
   const brandLabel = t('app.brand');
   const homeLabel = t('entry.navHome');
   const isHome = view === 'home';
 
+  // Once opened the rail stays docked (Manus-style); navigating between
+  // destinations no longer collapses it.
+  const selectView = (next: EntryView) => {
+    onViewChange(next);
+  };
+
   return (
-    <nav className="entry-nav-rail" aria-label="Primary">
+    <nav
+      className={`entry-nav-rail${open ? ' is-open' : ''}`}
+      aria-label="Primary"
+      aria-hidden={open ? undefined : true}
+    >
       <div className="entry-nav-rail__group">
-        <button
-          type="button"
-          className="entry-nav-rail__logo"
-          onClick={() => onViewChange('home')}
-          aria-label={brandLabel}
-          data-tooltip={brandLabel}
-          data-testid="entry-nav-logo"
-        >
-          <img
-            src="/app-icon.svg"
-            alt=""
-            className="entry-nav-rail__logo-img"
-            draggable={false}
-          />
-        </button>
+        <div className="entry-nav-rail__brand">
+          <button
+            type="button"
+            className="entry-nav-rail__logo"
+            onClick={() => selectView('home')}
+            aria-label={brandLabel}
+            data-testid="entry-nav-logo"
+          >
+            <img
+              src="/app-icon.svg"
+              alt=""
+              className="entry-nav-rail__logo-img"
+              draggable={false}
+            />
+          </button>
+          <button
+            type="button"
+            className="entry-nav-rail__collapse"
+            onClick={onClose}
+            aria-label={t('entry.navCollapse')}
+            title={t('entry.navCollapse')}
+            data-testid="entry-nav-collapse"
+          >
+            <Icon name="panel-left" size={20} />
+          </button>
+        </div>
         <div className="entry-nav-rail__logo-divider" role="separator" aria-hidden="true" />
         <NavButton
           ariaLabel={t('entry.navNewProject')}
@@ -90,7 +115,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           active={isHome}
           ariaLabel={homeLabel}
           tooltip={homeLabel}
-          onClick={() => onViewChange('home')}
+          onClick={() => selectView('home')}
           testId="entry-nav-home"
         >
           <Icon name="home" size={18} />
@@ -99,7 +124,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           active={view === 'projects'}
           ariaLabel={t('entry.navProjects')}
           tooltip={t('entry.navProjects')}
-          onClick={() => onViewChange('projects')}
+          onClick={() => selectView('projects')}
           testId="entry-nav-projects"
         >
           <Icon name="folder" size={18} />
@@ -108,7 +133,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           active={view === 'tasks'}
           ariaLabel={t('entry.navTasks')}
           tooltip={t('entry.navTasks')}
-          onClick={() => onViewChange('tasks')}
+          onClick={() => selectView('tasks')}
           testId="entry-nav-tasks"
         >
           <Icon name="kanban" size={18} />
@@ -117,7 +142,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           active={view === 'design-systems'}
           ariaLabel={t('entry.navDesignSystems')}
           tooltip={t('entry.navDesignSystems')}
-          onClick={() => onViewChange('design-systems')}
+          onClick={() => selectView('design-systems')}
           testId="entry-nav-design-systems"
         >
           <Icon name="blocks" size={18} />
@@ -126,7 +151,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           active={view === 'plugins'}
           ariaLabel={t('entry.navPlugins')}
           tooltip={t('entry.navPlugins')}
-          onClick={() => onViewChange('plugins')}
+          onClick={() => selectView('plugins')}
           testId="entry-nav-plugins"
         >
           <Icon name="grid" size={18} />
@@ -135,7 +160,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           active={view === 'integrations'}
           ariaLabel={t('entry.navIntegrations')}
           tooltip={t('entry.navIntegrations')}
-          onClick={() => onViewChange('integrations')}
+          onClick={() => selectView('integrations')}
           testId="entry-nav-integrations"
         >
           <Icon name="link" size={18} />
