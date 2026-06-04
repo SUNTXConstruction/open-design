@@ -769,6 +769,8 @@ try {
       }
       $localUpdateVersion = $updateFixtureVersion
     }
+  } elseif ($SmokeMode -eq "full") {
+    Write-Host "Skipping local Windows update fixture build because external update metadata or installer inputs are set"
   }
 
   $env:OD_PACKAGED_E2E_BUILD_JSON_PATH = $buildJsonPath

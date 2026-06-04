@@ -1,7 +1,6 @@
 // @vitest-environment node
 
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
@@ -11,6 +10,10 @@ import { promisify } from 'node:util';
 import { describe, expect, test } from 'vitest';
 
 import { createPackagedSmokeReport } from '@/vitest/packaged-report';
+import {
+  applyPackagedUpdateEnv,
+  resolvePackagedUpdateScenario,
+} from '@/vitest/packaged-update-scenario';
 import { releaseAppVersionArgs, resolvePackagedWinInstallIdentity } from '@/vitest/packaged-win-identity';
 
 const execFileAsync = promisify(execFile);
@@ -28,10 +31,12 @@ const verifyRealUpdateInstaller =
     ? !verifyCoreOnly
     : process.env.OD_PACKAGED_E2E_WIN_REAL_UPDATE_INSTALL === '1';
 const updateArtifactPath = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH);
+const updateMetadataUrl = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL);
 const updateVersion = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_VERSION);
 const updateBuildJsonPath = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_BUILD_JSON_PATH);
-const updateMetadataUrl = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL);
+const releaseChannel = process.env.OD_PACKAGED_E2E_RELEASE_CHANNEL;
 const releaseVersion = process.env.OD_PACKAGED_E2E_RELEASE_VERSION;
+const updateScenario = resolvePackagedUpdateScenario({ releaseChannel, releaseVersion });
 const installIdentity = resolvePackagedWinInstallIdentity({ namespace, releaseVersion });
 const toolsPackReleaseVersionArgs = releaseAppVersionArgs(releaseVersion);
 
@@ -192,15 +197,6 @@ type DirectInstallerResult = {
   nsisLogTail: string[];
 };
 
-type ReleaseMetadata = {
-  betaVersion?: unknown;
-  nightlyVersion?: unknown;
-  previewVersion?: unknown;
-  releaseVersion?: unknown;
-  stableVersion?: unknown;
-  platforms?: unknown;
-};
-
 type InstalledPackagedConfig = {
   namespaceBaseRoot?: unknown;
 };
@@ -236,6 +232,7 @@ winDescribe('packaged windows runtime smoke', () => {
     let logs: LogsResult | { skipped: true } = { skipped: true };
     let stop: WinStopResult | { skipped: true } = { skipped: true };
     let postUpdateHealth: HealthEvalValue | { skipped: true } = { skipped: true };
+    const updateEnv = captureUpdateEnv();
     try {
       await measureSmokeStep(timings, 'pre-clean uninstall', async () => {
         await runToolsPackJson<WinUninstallResult>('uninstall', ['--remove-product-user-data']).catch(() => null);
@@ -285,6 +282,10 @@ winDescribe('packaged windows runtime smoke', () => {
         return stop;
       };
 
+      if (!verifyCoreOnly && updateMetadataUrl != null && updateMetadataUrl !== '') {
+        applyPackagedUpdateEnv(process.env, updateScenario, updateMetadataUrl);
+      }
+
       let start = await startDesktop('start');
 
       expect(start.namespace).toBe(namespace);
@@ -313,7 +314,10 @@ winDescribe('packaged windows runtime smoke', () => {
       await report.report.save('screenshots/open-design-win-before-update.png', await readFile(preUpdateScreenshotPath));
 
       if (!verifyCoreOnly && verifyRealUpdateInstaller) {
-        const updateTarget = await resolveUpgradeTarget();
+        const updateTarget = await resolveUpgradeTarget({
+          expectedVersion: updateVersion,
+          metadataUrl: updateMetadataUrl,
+        });
         realUpdateInstaller = await measureSmokeStep(timings, 'real update installer acceptance', async () =>
           runUpgradeInstallerAcceptance({
             installDir: install.installDir,
@@ -440,6 +444,7 @@ winDescribe('packaged windows runtime smoke', () => {
       printLifecycleTimings('uninstall lifecycle timings', uninstall.lifecycleTimings);
       passed = true;
     } finally {
+      restoreUpdateEnv(updateEnv);
       if (!passed) {
         await printPackagedLogs().catch((error: unknown) => {
           console.error('failed to read packaged windows logs after failure', error);
@@ -610,9 +615,12 @@ async function readNsisLogLines(): Promise<string[]> {
   return raw.split(/\r?\n/).filter((line) => line.length > 0);
 }
 
-async function resolveUpgradeTarget(): Promise<{ installerPath: string; targetVersion: string }> {
+async function resolveUpgradeTarget(options: {
+  expectedVersion: string | null;
+  metadataUrl: string | null;
+}): Promise<{ installerPath: string; targetVersion: string }> {
   const configuredInstallerPath = updateArtifactPath;
-  const configuredTargetVersion = updateVersion;
+  const configuredTargetVersion = options.expectedVersion;
   if (configuredInstallerPath != null && configuredInstallerPath !== '' && configuredTargetVersion != null && configuredTargetVersion !== '') {
     return {
       installerPath: configuredInstallerPath,
@@ -620,8 +628,8 @@ async function resolveUpgradeTarget(): Promise<{ installerPath: string; targetVe
     };
   }
 
-  if (updateMetadataUrl != null && updateMetadataUrl !== '') {
-    return resolveExternalMetadataUpgradeTarget(updateMetadataUrl, configuredTargetVersion);
+  if (options.metadataUrl != null && options.metadataUrl !== '') {
+    return await resolveExternalUpdaterTarget(configuredTargetVersion);
   }
 
   const fallbackBuildJsonPath = resolveFallbackUpdateBuildJsonPath();
@@ -651,84 +659,49 @@ async function resolveUpgradeTarget(): Promise<{ installerPath: string; targetVe
   };
 }
 
-async function resolveExternalMetadataUpgradeTarget(
-  metadataUrl: string,
-  configuredTargetVersion: string | null,
-): Promise<{ installerPath: string; targetVersion: string }> {
-  const metadataResponse = await fetch(metadataUrl);
-  if (!metadataResponse.ok) {
-    throw new Error(`failed to fetch Windows update metadata ${metadataUrl}: ${metadataResponse.status}`);
+async function resolveExternalUpdaterTarget(expectedVersion: string | null): Promise<{ installerPath: string; targetVersion: string }> {
+  const downloaded = await waitForDownloadedUpdater(expectedVersion);
+  const downloadPath = downloaded.update?.downloadPath;
+  const availableVersion = downloaded.update?.availableVersion;
+  if (downloadPath == null || downloadPath === '') {
+    throw new Error(`external updater did not report downloadPath: ${formatUnknown(downloaded.update)}`);
   }
-  const metadata = await metadataResponse.json() as ReleaseMetadata;
-  const winPlatform = isRecord(metadata.platforms)
-    ? metadata.platforms.win
-    : null;
-  if (!isRecord(winPlatform) || !isRecord(winPlatform.artifacts) || !isRecord(winPlatform.artifacts.installer)) {
-    throw new Error(`Windows update metadata missing platforms.win.artifacts.installer: ${metadataUrl}`);
+  if (availableVersion == null || availableVersion === '') {
+    throw new Error(`external updater did not report availableVersion: ${formatUnknown(downloaded.update)}`);
   }
-  const installer = winPlatform.artifacts.installer;
-  if (typeof installer.url !== 'string' || installer.url.length === 0) {
-    throw new Error(`Windows update metadata missing installer url: ${metadataUrl}`);
-  }
-  const targetVersion = configuredTargetVersion ?? metadataVersion(metadata);
-  if (targetVersion == null || targetVersion.length === 0) {
-    throw new Error(
-      `Windows update metadata missing target version; set OD_PACKAGED_E2E_WIN_UPDATE_VERSION for ${metadataUrl}`,
-    );
-  }
-
-  const artifactName = typeof installer.name === 'string' && installer.name.length > 0
-    ? installer.name
-    : basename(new URL(installer.url).pathname);
-  const installerPath = join(outputNamespaceRoot, 'external-update', safeFileName(artifactName || 'open-design-update.exe'));
-  await mkdir(dirname(installerPath), { recursive: true });
-
-  const expectedSha256 = typeof installer.sha256Url === 'string' && installer.sha256Url.length > 0
-    ? await fetchSha256(new URL(installer.sha256Url, metadataUrl).toString())
-    : null;
-  const actualSha256 = await downloadUrlToFile(new URL(installer.url, metadataUrl).toString(), installerPath);
-  if (expectedSha256 != null && actualSha256 !== expectedSha256) {
-    throw new Error(`Windows update installer checksum mismatch for ${installer.url}: expected ${expectedSha256}, got ${actualSha256}`);
-  }
-
   return {
-    installerPath,
-    targetVersion,
+    installerPath: downloadPath,
+    targetVersion: availableVersion,
   };
 }
 
-function metadataVersion(metadata: ReleaseMetadata): string | null {
-  for (const value of [
-    metadata.betaVersion,
-    metadata.releaseVersion,
-    metadata.stableVersion,
-    metadata.previewVersion,
-    metadata.nightlyVersion,
-  ]) {
-    if (typeof value === 'string' && value.length > 0) return value;
+async function waitForDownloadedUpdater(expectedVersion: string | null, timeoutMs = 120_000): Promise<WinInspectResult> {
+  const startedAt = Date.now();
+  let lastResult: unknown = null;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const inspect = await runToolsPackJson<WinInspectResult>('inspect', ['--update-action', 'download']);
+      lastResult = inspect;
+      if (
+        inspect.update?.state === 'downloaded' &&
+        typeof inspect.update.downloadPath === 'string' &&
+        inspect.update.downloadPath.length > 0 &&
+        typeof inspect.update.availableVersion === 'string' &&
+        inspect.update.availableVersion.length > 0
+      ) {
+        if (expectedVersion != null && expectedVersion !== '') {
+          expect(inspect.update.availableVersion).toBe(expectedVersion);
+        }
+        expect(inspect.update.channel).toBe(updateScenario.channel);
+        expect(inspect.update.currentVersion).toBe(updateScenario.expectedCurrentVersion);
+        return inspect;
+      }
+    } catch (error) {
+      lastResult = error;
+    }
+    await delay(1000);
   }
-  return null;
-}
-
-async function fetchSha256(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`failed to fetch Windows update checksum ${url}: ${response.status}`);
-  const text = await response.text();
-  const match = /\b([a-fA-F0-9]{64})\b/.exec(text);
-  if (match?.[1] == null) throw new Error(`Windows update checksum response did not contain sha256: ${url}`);
-  return match[1].toLowerCase();
-}
-
-async function downloadUrlToFile(url: string, destinationPath: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`failed to download Windows update installer ${url}: ${response.status}`);
-  const body = Buffer.from(await response.arrayBuffer());
-  await writeFile(destinationPath, body);
-  return createHash('sha256').update(body).digest('hex');
-}
-
-function safeFileName(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]+/g, '-');
+  throw new Error(`external Windows updater did not download an installer: ${formatUnknown(lastResult)}`);
 }
 
 function resolveFallbackUpdateBuildJsonPath(): string | null {
@@ -747,6 +720,29 @@ async function readLatestYmlVersion(latestYmlPath: string): Promise<string | nul
 
 function stripUtf8Bom(value: string): string {
   return value.charCodeAt(0) === 0xfeff ? value.slice(1) : value;
+}
+
+const UPDATE_ENV_KEYS = [
+  'OD_UPDATE_AUTO_CHECK',
+  'OD_UPDATE_ENABLED',
+  'OD_UPDATE_METADATA_URL',
+  'OD_UPDATE_CURRENT_VERSION',
+  'OD_UPDATE_OPEN_DRY_RUN',
+] as const;
+
+function captureUpdateEnv(): Partial<Record<(typeof UPDATE_ENV_KEYS)[number], string>> {
+  return Object.fromEntries(
+    UPDATE_ENV_KEYS
+      .map((key) => [key, process.env[key]] as const)
+      .filter((entry): entry is readonly [(typeof UPDATE_ENV_KEYS)[number], string] => entry[1] != null),
+  );
+}
+
+function restoreUpdateEnv(previous: Partial<Record<(typeof UPDATE_ENV_KEYS)[number], string>>): void {
+  for (const key of UPDATE_ENV_KEYS) {
+    if (previous[key] == null) delete process.env[key];
+    else process.env[key] = previous[key];
+  }
 }
 
 async function waitForInstalledVersion(installDir: string, expectedVersion: string, timeoutMs = 30_000): Promise<void> {

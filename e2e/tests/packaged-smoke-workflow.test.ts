@@ -21,6 +21,7 @@ const releasePublishBetaCommonScriptPath = join(
   "release",
   "publish-beta-common.ps1",
 );
+const releaseBuildBetaScriptPath = join(workspaceRoot, ".github", "scripts", "release", "build-beta.ps1");
 const releaseWinReportScriptPath = join(workspaceRoot, ".github", "scripts", "release", "report", "win.ps1");
 
 describe("packaged smoke workflow", () => {
@@ -117,9 +118,10 @@ describe("packaged smoke workflow", () => {
   });
 
   it("keeps the self-hosted beta lane metadata-driven with reusable platform publish scripts", async () => {
-    const [workflow, macAssetsScript] = await Promise.all([
+    const [workflow, macAssetsScript, buildBetaScript] = await Promise.all([
       readFile(releaseBetaSelfHostedWorkflowPath, "utf8"),
       readFile(releaseMacAssetsScriptPath, "utf8"),
+      readFile(releaseBuildBetaScriptPath, "utf8"),
     ]);
 
     expect(workflow).toContain("win_enable:");
@@ -161,6 +163,11 @@ describe("packaged smoke workflow", () => {
     expect(workflow).toContain('OD_BETA_WINDOWS_SIGNING_ENABLED: ${{ steps.sign_probe.outputs.enabled }}');
     expect(workflow).toContain('OD_BETA_WINDOWS_SIGNING_PROBED: ${{ steps.sign_probe.outputs.probed }}');
     expect(workflow).toContain('OD_BETA_WINDOWS_SIGNTOOL_PATH: ${{ steps.sign_probe.outputs.signtool_path }}');
+    expect(workflow).toContain("OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL: ${{ inputs.win_update_metadata_url }}");
+    expect(workflow).toContain("OD_PACKAGED_E2E_WIN_UPDATE_VERSION: ${{ inputs.win_update_target_version }}");
+    expect(buildBetaScript).toContain(".\\packages\\metatool\\src\\cli.ts");
+    expect(buildBetaScript).not.toContain(".\\scripts\\tool-build-metadata.mjs");
+    expect(buildBetaScript).toContain("Skipping local Windows update fixture build because external update metadata or installer inputs are set");
     expect(workflow).toContain("Publish beta candidate platform to Nexu S3");
     expect(workflow).toContain("publish-platform.ps1");
     expect(workflow).toContain("name: Publish windows build report");
@@ -259,9 +266,9 @@ describe("packaged smoke workflow", () => {
     expect(winScript).toContain("$hasExternalUpdateArtifactPair");
     expect(winScript).toContain('if ($SmokeMode -eq "full" -and -not $hasExternalUpdateMetadata -and -not $hasExternalUpdateArtifactPair)');
     expect(winSpec).toContain("OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL");
-    expect(winSpec).toContain("resolveExternalMetadataUpgradeTarget(updateMetadataUrl, configuredTargetVersion)");
-    expect(winSpec).toContain("platforms.win.artifacts.installer");
-    expect(winSpec).toContain("downloadUrlToFile");
+    expect(winSpec).toContain("applyPackagedUpdateEnv(process.env, updateScenario, updateMetadataUrl)");
+    expect(winSpec).toContain("resolveExternalUpdaterTarget(configuredTargetVersion)");
+    expect(winSpec).toContain("inspect', ['--update-action', 'download']");
   });
 });
 
