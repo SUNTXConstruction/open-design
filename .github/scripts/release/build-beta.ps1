@@ -117,6 +117,20 @@ function New-CmdCommandLine([string[]]$Arguments) {
   return ($Arguments | ForEach-Object { Quote-CmdArgument $_ }) -join " "
 }
 
+function Set-EnvDefault([string]$Name, [string]$Value) {
+  if ([string]::IsNullOrWhiteSpace([string][System.Environment]::GetEnvironmentVariable($Name, "Process"))) {
+    [System.Environment]::SetEnvironmentVariable($Name, $Value, "Process")
+  }
+}
+
+function Set-WindowsDownloadMirrorDefaults {
+  Set-EnvDefault "npm_config_registry" "https://registry.npmmirror.com"
+  Set-EnvDefault "npm_config_disturl" "https://npmmirror.com/mirrors/node"
+  Set-EnvDefault "npm_config_electron_mirror" "https://npmmirror.com/mirrors/electron/"
+  Set-EnvDefault "npm_config_electron_builder_binaries_mirror" "https://npmmirror.com/mirrors/electron-builder-binaries/"
+  Set-EnvDefault "npm_config_better_sqlite3_binary_host_mirror" "https://npmmirror.com/mirrors/better-sqlite3"
+}
+
 function Invoke-Node24([string[]]$Arguments, [string]$WorkingDirectory = $workspaceRoot) {
   Push-Location -LiteralPath $WorkingDirectory
   try {
@@ -595,6 +609,7 @@ Remove-Item -LiteralPath $buildJsonPath -Force -ErrorAction SilentlyContinue
 $script:windowsSigningEnabled = $false
 $env:OD_PACKAGED_E2E_REPORT_DIR = Join-Path $reportDir "win"
 $env:OD_PACKAGED_E2E_TOOLS_PACK_DIR = $toolsPackDir
+Set-WindowsDownloadMirrorDefaults
 
 try {
   Measure-Step "toolchain" {
