@@ -49,6 +49,7 @@ import {
   type InlineMentionEntity,
 } from '../utils/inlineMentions';
 import { useI18n, useT } from '../i18n';
+import { localizePluginDescription, localizePluginTitle } from './plugins-home/localization';
 import type { Locale } from '../i18n/types';
 import {
   localizeSkillDescription,
@@ -370,8 +371,8 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
           options: pluginMatches.map((plugin) => ({
             id: `plugin-${plugin.id}`,
             icon: 'sparkles',
-            title: plugin.title,
-            description: plugin.manifest?.description ?? plugin.id,
+            title: localizePluginTitle(locale, plugin),
+            description: localizePluginDescription(locale, plugin) || plugin.id,
             meta: pendingPluginId === plugin.id ? t('homeHero.applying') : getPluginSourceLabel(plugin),
             pluginRecord: plugin,
             disabled: pendingPluginId !== null,
@@ -1154,8 +1155,8 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                   <span className="home-hero__plugin-hover-kicker">
                     {getPluginSourceLabel(hoveredPlugin)}
                   </span>
-                  <strong>{hoveredPlugin.title}</strong>
-                  <p>{hoveredPlugin.manifest?.description ?? hoveredPlugin.id}</p>
+                  <strong>{localizePluginTitle(locale, hoveredPlugin)}</strong>
+                  <p>{localizePluginDescription(locale, hoveredPlugin) || hoveredPlugin.id}</p>
                 </div>
                 <div className="home-hero__plugin-hover-meta">
                   <span>{t('homeHero.parameters', { n: (hoveredPlugin.manifest?.od?.inputs ?? []).length })}</span>
@@ -1635,7 +1636,7 @@ function PluginPromptPresetCard({
       <span className="home-hero__plugin-preset-preview" aria-hidden>
         <PreviewSurface
           pluginId={record.id}
-          pluginTitle={record.title}
+          pluginTitle={localizePluginTitle(locale, record)}
           preview={preview}
         />
         {active ? (
@@ -1645,7 +1646,7 @@ function PluginPromptPresetCard({
         ) : null}
       </span>
       <span className="home-hero__plugin-preset-title">
-        {record.title}
+        {localizePluginTitle(locale, record)}
       </span>
     </button>
   );
@@ -2864,7 +2865,9 @@ function pluginPresetPromptPreview(
   chipId: string,
 ): string {
   const query = pluginPresetQuery(record, locale);
-  const rendered = query ? renderPluginPresetQuery(record, query) : record.manifest?.description ?? '';
+  const rendered = query
+    ? renderPluginPresetQuery(record, query)
+    : localizePluginDescription(locale, record);
   return textPromptForPluginPreset(record, rendered, chipId, locale);
 }
 
@@ -2947,26 +2950,31 @@ function describeStructuredPresetPrompt(
   chipId: string,
   locale: Locale,
 ): string {
-  const zh = isChineseLocale(locale);
-  const artifact = pluginPresetArtifactLabel(chipId, zh);
-  const title = record.title.trim();
+  const kind = promptLocaleKind(locale);
+  const artifact = pluginPresetArtifactLabel(chipId, kind);
+  const title = localizePluginTitle(locale, record).trim();
   const strings = collectStructuredPromptStrings(structured);
   const main =
     strings.find((item) => isMainPromptField(item.key) && item.value.length >= 8)?.value ??
     strings.find((item) => item.value.length >= 16)?.value ??
-    record.manifest?.description ??
-    title;
+    (localizePluginDescription(locale, record) || title);
   const detailValues = uniquePromptStrings(
     strings
       .filter((item) => item.value !== main)
       .filter((item) => isUsefulPromptDetail(item.value))
       .map((item) => item.value),
   ).slice(0, 4);
-  if (zh) {
+  if (kind === 'zh') {
     const details = detailValues.length > 0
       ? `重点包含：${detailValues.join('；')}。`
       : '';
     return `使用「${title}」插件生成${artifact}。${main}${sentenceEnd(main)}${details}`;
+  }
+  if (kind === 'ja') {
+    const details = detailValues.length > 0
+      ? `重点として：${detailValues.join('、')}。`
+      : '';
+    return `「${title}」プラグインで${artifact}を生成します。${main}${sentenceEnd(main)}${details}`;
   }
   const details = detailValues.length > 0
     ? ` Include ${detailValues.join('; ')}.`
@@ -3031,8 +3039,8 @@ function englishSentenceEnd(value: string): string {
   return /[.!?。！？]$/u.test(value.trim()) ? '' : '.';
 }
 
-function pluginPresetArtifactLabel(chipId: string, zh: boolean): string {
-  if (zh) {
+function pluginPresetArtifactLabel(chipId: string, kind: PromptLocaleKind): string {
+  if (kind === 'zh') {
     switch (chipId) {
       case 'prototype': return '一个交互原型';
       case 'deck': return '一套 PPT slide';
@@ -3041,6 +3049,17 @@ function pluginPresetArtifactLabel(chipId: string, zh: boolean): string {
       case 'hyperframes': return '一段 HyperFrames 动效视频';
       case 'audio': return '一段音频';
       default: return '一个设计产物';
+    }
+  }
+  if (kind === 'ja') {
+    switch (chipId) {
+      case 'prototype': return 'インタラクティブなプロトタイプ';
+      case 'deck': return 'PPT スライド';
+      case 'image': return '画像';
+      case 'video': return '動画';
+      case 'hyperframes': return 'HyperFrames のモーション動画';
+      case 'audio': return 'オーディオ';
+      default: return 'デザイン成果物';
     }
   }
   switch (chipId) {
@@ -3063,13 +3082,17 @@ function fallbackPluginPresetPrompt(
   chipId: string,
   locale: Locale,
 ): string {
-  const zh = isChineseLocale(locale);
-  const artifact = pluginPresetArtifactLabel(chipId, zh);
-  const description = record.manifest?.description?.trim();
-  if (zh) {
-    return `使用「${record.title}」插件生成${artifact}${description ? `，方向是：${description}` : ''}。`;
+  const kind = promptLocaleKind(locale);
+  const artifact = pluginPresetArtifactLabel(chipId, kind);
+  const title = localizePluginTitle(locale, record);
+  const description = localizePluginDescription(locale, record).trim();
+  if (kind === 'zh') {
+    return `使用「${title}」插件生成${artifact}${description ? `，方向是：${description}` : ''}。`;
   }
-  return `Create ${englishArticle(artifact)} ${artifact} with the "${record.title}" preset${description ? `: ${description}` : '.'}`;
+  if (kind === 'ja') {
+    return `「${title}」プラグインで${artifact}を生成します${description ? `。方向性：${description}` : ''}。`;
+  }
+  return `Create ${englishArticle(artifact)} ${artifact} with the "${title}" preset${description ? `: ${description}` : '.'}`;
 }
 
 const HOME_ESCAPED_ARGUMENT_PLACEHOLDER_PATTERN =
@@ -3079,99 +3102,145 @@ const HOME_ARGUMENT_PLACEHOLDER_PATTERN =
   /\{argument\s+name=(?:"([^"]+)"|'([^']+)')\s+default=(?:"([^"]*)"|'([^']*)')[^}]*\}/g;
 
 function homeHeroChipPromptExamples(chipId: string, locale: Locale): string[] {
-  const zh = isChineseLocale(locale);
+  const kind = promptLocaleKind(locale);
   switch (chipId) {
     case 'prototype':
-      return zh
-        ? [
-            '为 AI CRM 设计一个高转化官网，包含首屏、功能卖点、客户案例和清晰的试用入口',
-            '为团队知识库做一个桌面端仪表盘，突出搜索、最近更新、权限状态和协作入口',
-            '重构金融 SaaS 的 onboarding 流程，让新用户能快速完成开户、连接数据和看到首个洞察',
-            '设计一个移动端健身教练 App 原型，覆盖目标设定、训练计划、打卡反馈和进度复盘',
-          ]
-        : [
-            'Design a high-converting website for an AI CRM with a clear hero, feature story, proof points, and trial CTA',
-            'Create a desktop dashboard for a team knowledge base with search, recent updates, permissions, and collaboration entry points',
-            'Redesign onboarding for a financial SaaS product so new users can connect data, finish setup, and see first value fast',
-            'Prototype a mobile fitness coaching app covering goal setup, weekly plans, workout check-ins, and progress review',
-          ];
+      if (kind === 'zh')
+        return [
+          '为 AI CRM 设计一个高转化官网，包含首屏、功能卖点、客户案例和清晰的试用入口',
+          '为团队知识库做一个桌面端仪表盘，突出搜索、最近更新、权限状态和协作入口',
+          '重构金融 SaaS 的 onboarding 流程，让新用户能快速完成开户、连接数据和看到首个洞察',
+          '设计一个移动端健身教练 App 原型，覆盖目标设定、训练计划、打卡反馈和进度复盘',
+        ];
+      if (kind === 'ja')
+        return [
+          'AI CRM 向けに、ヒーロー・機能ストーリー・実績・トライアル CTA を備えた高コンバージョンの Web サイトをデザインして',
+          'チームのナレッジベース向けに、検索・最近の更新・権限状態・コラボ導線を備えたデスクトップのダッシュボードを作って',
+          '金融 SaaS のオンボーディングを再設計して、新規ユーザーがデータ連携・初期設定・最初の価値体験まで素早く到達できるようにして',
+          '目標設定・週次プラン・チェックイン・進捗レビューをカバーする、モバイルのフィットネスコーチ App のプロトタイプを作って',
+        ];
+      return [
+        'Design a high-converting website for an AI CRM with a clear hero, feature story, proof points, and trial CTA',
+        'Create a desktop dashboard for a team knowledge base with search, recent updates, permissions, and collaboration entry points',
+        'Redesign onboarding for a financial SaaS product so new users can connect data, finish setup, and see first value fast',
+        'Prototype a mobile fitness coaching app covering goal setup, weekly plans, workout check-ins, and progress review',
+      ];
     case 'deck':
-      return zh
-        ? [
-            '研究一个新产品发布的市场机会，输出竞品格局、目标用户、定价假设和上市叙事',
-            '生成每周团队状态报告，汇总进展、风险、关键指标变化和下周优先级',
-            '设计一份投资者推介材料，包含市场规模、增长模型、产品优势和三年预测数据',
-            '创建战略业务复盘演示文稿，讲清本季度表现、问题原因、机会判断和下一步行动',
-          ]
-        : [
-            'Research the market opportunity for a product launch, including competitors, target users, pricing hypotheses, and launch narrative',
-            'Generate a weekly team status report with progress, risks, metric changes, and next-week priorities',
-            'Design an investor pitch with market sizing, growth model, product advantage, and three-year forecast data',
-            'Create a strategic business review deck covering quarterly performance, root causes, opportunities, and next actions',
-          ];
+      if (kind === 'zh')
+        return [
+          '研究一个新产品发布的市场机会，输出竞品格局、目标用户、定价假设和上市叙事',
+          '生成每周团队状态报告，汇总进展、风险、关键指标变化和下周优先级',
+          '设计一份投资者推介材料，包含市场规模、增长模型、产品优势和三年预测数据',
+          '创建战略业务复盘演示文稿，讲清本季度表现、问题原因、机会判断和下一步行动',
+        ];
+      if (kind === 'ja')
+        return [
+          '新製品ローンチの市場機会をリサーチして、競合状況・ターゲットユーザー・価格仮説・ローンチの物語をまとめて',
+          '進捗・リスク・主要指標の変化・来週の優先事項を盛り込んだ週次チームステータスレポートを生成して',
+          '市場規模・成長モデル・製品の強み・3 年分の予測データを含む投資家向けピッチをデザインして',
+          '四半期の実績・原因・機会・次のアクションをまとめた戦略的なビジネスレビューのデッキを作って',
+        ];
+      return [
+        'Research the market opportunity for a product launch, including competitors, target users, pricing hypotheses, and launch narrative',
+        'Generate a weekly team status report with progress, risks, metric changes, and next-week priorities',
+        'Design an investor pitch with market sizing, growth model, product advantage, and three-year forecast data',
+        'Create a strategic business review deck covering quarterly performance, root causes, opportunities, and next actions',
+      ];
     case 'image':
-      return zh
-        ? [
-            '生成一张玻璃质感 AI 工作台海报，画面包含多屏协作、柔和光影和高级产品发布氛围',
-            '为新款无线耳机做一张电商首屏主图，突出材质细节、佩戴场景和核心卖点',
-            '设计一张极简科技发布会 KV，用干净构图、强主视觉和少量文字表达新品发布',
-            '做一套社媒新品预热视觉，包含倒计时、局部特写、卖点揭示和发布日主图',
-          ]
-        : [
-            'Generate a glassmorphism AI workspace poster with multi-screen collaboration, soft lighting, and a premium launch mood',
-            'Create an ecommerce hero image for new wireless headphones that highlights material detail, lifestyle context, and core benefits',
-            'Design a minimalist tech launch key visual with a clean composition, strong product focus, and restrained launch copy',
-            'Make a social teaser set for a product drop, including countdown, close-up detail, benefit reveal, and launch-day visual',
-          ];
+      if (kind === 'zh')
+        return [
+          '生成一张玻璃质感 AI 工作台海报，画面包含多屏协作、柔和光影和高级产品发布氛围',
+          '为新款无线耳机做一张电商首屏主图，突出材质细节、佩戴场景和核心卖点',
+          '设计一张极简科技发布会 KV，用干净构图、强主视觉和少量文字表达新品发布',
+          '做一套社媒新品预热视觉，包含倒计时、局部特写、卖点揭示和发布日主图',
+        ];
+      if (kind === 'ja')
+        return [
+          'マルチスクリーンのコラボ・柔らかな光・上質なローンチの雰囲気を持つ、グラスモーフィズムの AI ワークスペースのポスターを生成して',
+          '素材の質感・装着シーン・主要な利点を強調した、新型ワイヤレスイヤホンの EC ヒーロー画像を作って',
+          'クリーンな構図・強いプロダクトフォーカス・抑えたコピーで、ミニマルなテック発表のキービジュアルをデザインして',
+          'カウントダウン・クローズアップ・利点の提示・ローンチ当日のビジュアルを含む、新製品予告の SNS ビジュアルセットを作って',
+        ];
+      return [
+        'Generate a glassmorphism AI workspace poster with multi-screen collaboration, soft lighting, and a premium launch mood',
+        'Create an ecommerce hero image for new wireless headphones that highlights material detail, lifestyle context, and core benefits',
+        'Design a minimalist tech launch key visual with a clean composition, strong product focus, and restrained launch copy',
+        'Make a social teaser set for a product drop, including countdown, close-up detail, benefit reveal, and launch-day visual',
+      ];
     case 'video':
-      return zh
-        ? [
-            '做一个 8 秒产品 reveal 短片，从暗场轮廓推进到完整产品特写，结尾出现品牌标识',
-            '生成一段 App 功能演示视频，按用户操作路径展示核心流程、关键状态和结果反馈',
-            '制作竖屏品牌开场动画，用节奏化文字、产品局部和 logo 收束，适合短视频开头',
-            '把一个网站转成 15 秒社媒广告，提炼首屏卖点、交互亮点和明确行动号召',
-          ]
-        : [
-            'Make an 8-second product reveal film that moves from silhouette to close-up detail and ends on the brand mark',
-            'Generate an app feature demo video that follows the user journey, key states, and final outcome',
-            'Create a vertical brand opener with rhythmic typography, product close-ups, and a clean logo ending for short-form video',
-            'Turn a website into a 15-second social ad by extracting the hero claim, interaction highlights, and a clear CTA',
-          ];
+      if (kind === 'zh')
+        return [
+          '做一个 8 秒产品 reveal 短片，从暗场轮廓推进到完整产品特写，结尾出现品牌标识',
+          '生成一段 App 功能演示视频，按用户操作路径展示核心流程、关键状态和结果反馈',
+          '制作竖屏品牌开场动画，用节奏化文字、产品局部和 logo 收束，适合短视频开头',
+          '把一个网站转成 15 秒社媒广告，提炼首屏卖点、交互亮点和明确行动号召',
+        ];
+      if (kind === 'ja')
+        return [
+          'シルエットからクローズアップへと展開し、最後にブランドマークで締める 8 秒のプロダクトリビール動画を作って',
+          'ユーザージャーニー・主要な状態・最終的な結果を追う、App 機能デモ動画を生成して',
+          'リズミカルなタイポグラフィ・プロダクトのクローズアップ・logo の収束で締める、縦型のブランドオープナーを作って',
+          'ヒーローの訴求・インタラクションの見どころ・明確な CTA を抽出して、Web サイトを 15 秒の SNS 広告に変換して',
+        ];
+      return [
+        'Make an 8-second product reveal film that moves from silhouette to close-up detail and ends on the brand mark',
+        'Generate an app feature demo video that follows the user journey, key states, and final outcome',
+        'Create a vertical brand opener with rhythmic typography, product close-ups, and a clean logo ending for short-form video',
+        'Turn a website into a 15-second social ad by extracting the hero claim, interaction highlights, and a clear CTA',
+      ];
     case 'hyperframes':
-      return zh
-        ? [
-            '做一个带字幕的产品发布短片，包含标题卡、功能镜头、节奏转场和结尾 CTA',
-            '生成一段音频响应数据可视化，让柱状图、粒子和标题随旁白节奏变化',
-            '制作 logo outro 动效，用线条收束、轻微弹性和品牌色完成 3 秒结尾动画',
-            '做一个航线地图动态演示，展示城市节点、路径增长、里程数据和最终汇总画面',
-          ]
-        : [
-            'Build a captioned product launch short with title cards, feature shots, rhythmic transitions, and an ending CTA',
-            'Generate an audio-reactive data visualization where bars, particles, and titles respond to narration beats',
-            'Create a 3-second logo outro using line convergence, subtle elasticity, and the brand color system',
-            'Make an animated flight-route map showing city nodes, route growth, mileage data, and a final summary frame',
-          ];
+      if (kind === 'zh')
+        return [
+          '做一个带字幕的产品发布短片，包含标题卡、功能镜头、节奏转场和结尾 CTA',
+          '生成一段音频响应数据可视化，让柱状图、粒子和标题随旁白节奏变化',
+          '制作 logo outro 动效，用线条收束、轻微弹性和品牌色完成 3 秒结尾动画',
+          '做一个航线地图动态演示，展示城市节点、路径增长、里程数据和最终汇总画面',
+        ];
+      if (kind === 'ja')
+        return [
+          'タイトルカード・機能ショット・リズミカルなトランジション・結びの CTA を備えた、字幕付きのプロダクトローンチ短編を作って',
+          'バー・パーティクル・タイトルがナレーションのビートに反応する、オーディオリアクティブなデータ可視化を生成して',
+          '線の収束・わずかな弾性・ブランドカラーを使った、3 秒の logo アウトロを作って',
+          '都市ノード・経路の伸び・距離データ・最終サマリーフレームを見せる、アニメーションのフライトルートマップを作って',
+        ];
+      return [
+        'Build a captioned product launch short with title cards, feature shots, rhythmic transitions, and an ending CTA',
+        'Generate an audio-reactive data visualization where bars, particles, and titles respond to narration beats',
+        'Create a 3-second logo outro using line convergence, subtle elasticity, and the brand color system',
+        'Make an animated flight-route map showing city nodes, route growth, mileage data, and a final summary frame',
+      ];
     case 'audio':
-      return zh
-        ? [
-            '生成一段产品启动音效，听起来轻盈、可信、带一点未来感，适合桌面 App 打开时播放',
-            '制作 20 秒播客片头音乐，包含温暖前奏、清晰节拍和适合人声进入的收尾',
-            '做一个冥想 App 的环境音循环，使用柔和自然声、低频铺底和无缝循环结构',
-            '生成一组品牌通知提示音，区分成功、提醒和错误状态，但保持同一声音识别度',
-          ]
-        : [
-            'Generate a product startup sound that feels light, trustworthy, slightly futuristic, and suitable for a desktop app launch',
-            'Create a 20-second podcast intro bed with a warm opening, clear pulse, and a clean handoff into voiceover',
-            'Make a seamless ambient loop for a meditation app using soft nature textures, low-frequency warmth, and calm pacing',
-            'Generate a branded notification sound set for success, reminder, and error states while keeping one sonic identity',
-          ];
+      if (kind === 'zh')
+        return [
+          '生成一段产品启动音效，听起来轻盈、可信、带一点未来感，适合桌面 App 打开时播放',
+          '制作 20 秒播客片头音乐，包含温暖前奏、清晰节拍和适合人声进入的收尾',
+          '做一个冥想 App 的环境音循环，使用柔和自然声、低频铺底和无缝循环结构',
+          '生成一组品牌通知提示音，区分成功、提醒和错误状态，但保持同一声音识别度',
+        ];
+      if (kind === 'ja')
+        return [
+          '軽やかで信頼感があり、少し未来的で、デスクトップ App の起動時に流すのにふさわしいプロダクト起動音を生成して',
+          '温かいオープニング・明確なパルス・ナレーションへのスムーズな受け渡しを備えた、20 秒のポッドキャストイントロを作って',
+          '柔らかな自然音・低域の温かみ・穏やかなテンポを使った、瞑想 App 向けのシームレスな環境音ループを作って',
+          '成功・リマインド・エラーの状態を区別しつつ、ひとつの音のアイデンティティを保ったブランド通知音セットを生成して',
+        ];
+      return [
+        'Generate a product startup sound that feels light, trustworthy, slightly futuristic, and suitable for a desktop app launch',
+        'Create a 20-second podcast intro bed with a warm opening, clear pulse, and a clean handoff into voiceover',
+        'Make a seamless ambient loop for a meditation app using soft nature textures, low-frequency warmth, and calm pacing',
+        'Generate a branded notification sound set for success, reminder, and error states while keeping one sonic identity',
+      ];
     default:
       return [];
   }
 }
 
-function isChineseLocale(locale: Locale): boolean {
-  return locale === 'zh-CN' || locale === 'zh-TW';
+type PromptLocaleKind = 'zh' | 'ja' | 'en';
+
+function promptLocaleKind(locale: Locale): PromptLocaleKind {
+  if (locale === 'zh-CN' || locale === 'zh-TW') return 'zh';
+  if (locale === 'ja') return 'ja';
+  return 'en';
 }
 
 function briefForChipId(chipId: string): Record<string, string> {

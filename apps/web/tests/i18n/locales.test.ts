@@ -231,4 +231,34 @@ describe('i18n locales', () => {
         'If you need to add new keys, declare them with their Chinese values directly.',
     ).not.toMatch(/\.\.\.en\b/);
   });
+
+  // Tier-1 locale parity lock for Japanese (matches the zh-CN guarantee above):
+  // `ja` is now fully localized — every English key has an explicit Japanese
+  // value with no `...en` spread fallback. These two cases keep that property
+  // from regressing: a new English key without a matching `ja` entry, or a
+  // reintroduced spread, fails CI loudly instead of silently rendering English
+  // to Japanese users.
+  it('keeps ja explicitly translated for every English key (tier-1 parity lock)', () => {
+    const englishKeys = Object.keys(en).sort();
+    const explicit = explicitLocaleKeys('ja').sort();
+
+    expect(
+      explicit,
+      'ja must explicitly declare every English key (no implicit `...en` spread fallback). ' +
+        'Add the missing translations to `apps/web/src/i18n/locales/ja.ts` rather than re-introducing the spread.',
+    ).toEqual(englishKeys);
+  });
+
+  it('keeps the ja locale source free of the `...en` spread fallback', () => {
+    const source = readFileSync(
+      new URL('../../src/i18n/locales/ja.ts', import.meta.url),
+      'utf8',
+    );
+
+    expect(
+      source,
+      'ja.ts must not use `...en` spread — every key must be explicitly translated. ' +
+        'If you need to add new keys, declare them with their Japanese values directly.',
+    ).not.toMatch(/\.\.\.en\b/);
+  });
 });

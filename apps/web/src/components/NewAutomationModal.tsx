@@ -4,6 +4,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import { useI18n } from '../i18n';
+import { localizePluginDescription, localizePluginTitle } from './plugins-home/localization';
 import type {
   CreateRoutineRequest,
   ConnectorDetail,
@@ -255,6 +257,7 @@ export function NewAutomationModal({
   onClose,
   onSaved,
 }: Props) {
+  const { locale } = useI18n();
   const editingId = initial?.routine?.id ?? null;
   const [form, setForm] = useState<FormState>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -722,8 +725,8 @@ export function NewAutomationModal({
                       <MentionItem
                         key={`plugin-${plugin.id}`}
                         icon="sparkles"
-                        label={plugin.title}
-                        meta={plugin.manifest?.description ?? plugin.id}
+                        label={localizePluginTitle(locale, plugin)}
+                        meta={localizePluginDescription(locale, plugin) || plugin.id}
                         selected={selectedPluginIds.includes(plugin.id)}
                         onPick={() => pickPlugin(plugin)}
                       />
