@@ -24,6 +24,8 @@ permissions:
   contents: read
 
 env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  COREPACK_HOME: /home/runner/.cache/open-design-ci/corepack
   OD_CI_ALLOW_DOCKER: "1"
   OD_CI_INSTALL_TIMEOUT_SECONDS: "1500"
   OD_CI_LANE: runner
@@ -53,6 +55,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-probe-${{ github.run_id }}
@@ -76,6 +79,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-setup-${{ github.run_id }}
@@ -99,6 +103,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-policy-${{ github.run_id }}
@@ -122,6 +127,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-unit-${{ github.run_id }}
@@ -145,6 +151,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-typecheck-${{ github.run_id }}
@@ -168,6 +175,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-daemon-${{ github.run_id }}
@@ -191,6 +199,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-web-${{ github.run_id }}
@@ -214,6 +223,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-build-${{ github.run_id }}
@@ -237,6 +247,7 @@ jobs:
 
       - name: Upload CI manifest
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-runner-browser-${{ github.run_id }}

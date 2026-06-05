@@ -64,6 +64,7 @@ pnpm_network_timeout="${OD_CI_PNPM_NETWORK_TIMEOUT:-180000}"
 pnpm_store_dir="${OD_CI_PNPM_STORE_DIR:-}"
 playwright_install_flags="${OD_CI_PLAYWRIGHT_INSTALL_FLAGS:-chromium}"
 step_timeout_seconds="${OD_CI_STEP_TIMEOUT_SECONDS:-600}"
+corepack_home="${COREPACK_HOME:-}"
 runner_name="${RUNNER_NAME:-unknown}"
 runner_os="${RUNNER_OS:-unknown}"
 runner_arch="${RUNNER_ARCH:-unknown}"
@@ -76,6 +77,12 @@ echo "ci lane: $lane"
 echo "runner: $runner_name / $runner_os / $runner_arch"
 echo "ref: $github_ref"
 echo "sha: $github_sha"
+
+if [ -n "$corepack_home" ]; then
+  mkdir -p "$corepack_home"
+  export COREPACK_HOME="$corepack_home"
+fi
+export COREPACK_ENABLE_DOWNLOAD_PROMPT="${COREPACK_ENABLE_DOWNLOAD_PROMPT:-0}"
 
 append_summary "## CI runner"
 append_summary ""
@@ -152,6 +159,9 @@ install_seconds="0"
 install_exit_code="0"
 node_modules_size="not-created"
 pnpm_store_size="unknown"
+corepack_prepare_status="skipped"
+corepack_prepare_exit_code="0"
+corepack_prepare_seconds="0"
 policy_status="skipped"
 policy_exit_code="0"
 policy_seconds="0"
@@ -215,6 +225,28 @@ playwright_critical_exit_code="0"
 playwright_critical_seconds="0"
 
 if [ "$mode" = "setup" ] || [ "$mode" = "policy" ] || [ "$mode" = "unit" ] || [ "$mode" = "typecheck" ] || [ "$mode" = "daemon" ] || [ "$mode" = "web" ] || [ "$mode" = "build" ] || [ "$mode" = "browser" ]; then
+  package_manager="$(node -p "require('./package.json').packageManager")"
+  append_summary ""
+  append_summary "### Corepack"
+  append_summary ""
+  append_summary "Command: \`corepack prepare $package_manager --activate\`"
+  append_summary ""
+
+  echo "corepack home: ${COREPACK_HOME:-default}"
+  echo "corepack package manager: $package_manager"
+
+  corepack_prepare_start="$(date +%s)"
+  set +e
+  timeout 180s corepack prepare "$package_manager" --activate
+  corepack_prepare_exit_code="$?"
+  set -e
+  corepack_prepare_seconds="$(( $(date +%s) - corepack_prepare_start ))"
+  if [ "$corepack_prepare_exit_code" = "0" ]; then
+    corepack_prepare_status="ok"
+  else
+    corepack_prepare_status="failed"
+  fi
+
   append_summary ""
   append_summary "### Install"
   append_summary ""
@@ -599,6 +631,8 @@ append_summary ""
 append_summary "| Field | Value |"
 append_summary "| --- | --- |"
 append_summary "| Install status | \`$install_status\` |"
+append_summary "| Corepack prepare status | \`$corepack_prepare_status\` |"
+append_summary "| Corepack prepare seconds | \`$corepack_prepare_seconds\` |"
 append_summary "| Install exit code | \`$install_exit_code\` |"
 append_summary "| Install seconds | \`$install_seconds\` |"
 append_summary "| node_modules size | \`$node_modules_size\` |"
@@ -643,6 +677,10 @@ cat > "$manifest" <<JSON
   "pnpmNetworkTimeout": "$(json_escape "$pnpm_network_timeout")",
   "playwrightInstallFlags": "$(json_escape "$playwright_install_flags")",
   "stepTimeoutSeconds": "$(json_escape "$step_timeout_seconds")",
+  "corepackHome": "$(json_escape "${COREPACK_HOME:-}")",
+  "corepackPrepareStatus": "$(json_escape "$corepack_prepare_status")",
+  "corepackPrepareExitCode": "$(json_escape "$corepack_prepare_exit_code")",
+  "corepackPrepareSeconds": "$(json_escape "$corepack_prepare_seconds")",
   "installStatus": "$(json_escape "$install_status")",
   "installExitCode": "$(json_escape "$install_exit_code")",
   "installSeconds": "$(json_escape "$install_seconds")",
@@ -719,6 +757,10 @@ echo "manifest: $manifest"
 
 if [ "$install_exit_code" != "0" ]; then
   exit "$install_exit_code"
+fi
+
+if [ "$corepack_prepare_exit_code" != "0" ]; then
+  exit "$corepack_prepare_exit_code"
 fi
 
 if [ "$policy_exit_code" != "0" ]; then
