@@ -4,7 +4,7 @@ set -Eeuo pipefail
 mode="${1:-${OD_CI_MODE:-}}"
 
 if [ -z "$mode" ]; then
-  echo "usage: $0 <probe|setup>" >&2
+  echo "usage: $0 <probe|setup|policy>" >&2
   exit 2
 fi
 
@@ -43,7 +43,7 @@ capture_cmd() {
 
 require_mode() {
   case "$mode" in
-    probe | setup) ;;
+    probe | setup | policy) ;;
     *)
       echo "unknown CI mode: $mode" >&2
       exit 2
@@ -62,6 +62,7 @@ pnpm_fetch_retry_mintimeout="${OD_CI_PNPM_FETCH_RETRY_MINTIMEOUT:-20000}"
 pnpm_install_flags="${OD_CI_PNPM_INSTALL_FLAGS:---frozen-lockfile}"
 pnpm_network_timeout="${OD_CI_PNPM_NETWORK_TIMEOUT:-180000}"
 pnpm_store_dir="${OD_CI_PNPM_STORE_DIR:-}"
+step_timeout_seconds="${OD_CI_STEP_TIMEOUT_SECONDS:-600}"
 runner_name="${RUNNER_NAME:-unknown}"
 runner_os="${RUNNER_OS:-unknown}"
 runner_arch="${RUNNER_ARCH:-unknown}"
@@ -150,8 +151,15 @@ install_seconds="0"
 install_exit_code="0"
 node_modules_size="not-created"
 pnpm_store_size="unknown"
+policy_status="skipped"
+policy_exit_code="0"
+policy_seconds="0"
+guard_exit_code="0"
+guard_seconds="0"
+i18n_exit_code="0"
+i18n_seconds="0"
 
-if [ "$mode" = "setup" ]; then
+if [ "$mode" = "setup" ] || [ "$mode" = "policy" ]; then
   append_summary ""
   append_summary "### Install"
   append_summary ""
@@ -184,6 +192,62 @@ if [ "$mode" = "setup" ]; then
   fi
 fi
 
+run_ci_command() {
+  local label="$1"
+  shift
+  local started
+  local exit_code
+  local seconds
+
+  echo "running: $label"
+  started="$(date +%s)"
+  set +e
+  timeout "${step_timeout_seconds}s" "$@"
+  exit_code="$?"
+  set -e
+  seconds="$(( $(date +%s) - started ))"
+  echo "completed: $label exit=$exit_code seconds=$seconds"
+
+  last_command_exit_code="$exit_code"
+  last_command_seconds="$seconds"
+}
+
+if [ "$mode" = "policy" ] && [ "$install_exit_code" = "0" ]; then
+  append_summary ""
+  append_summary "### Policy checks"
+  append_summary ""
+  append_summary "| Check | Exit code | Seconds |"
+  append_summary "| --- | ---: | ---: |"
+
+  policy_status="ok"
+  policy_start="$(date +%s)"
+
+  run_ci_command "pnpm guard" pnpm guard
+  guard_exit_code="$last_command_exit_code"
+  guard_seconds="$last_command_seconds"
+  append_summary "| \`pnpm guard\` | \`$guard_exit_code\` | \`$guard_seconds\` |"
+  if [ "$guard_exit_code" != "0" ]; then
+    policy_status="failed"
+  fi
+
+  run_ci_command "pnpm i18n:check" pnpm i18n:check
+  i18n_exit_code="$last_command_exit_code"
+  i18n_seconds="$last_command_seconds"
+  append_summary "| \`pnpm i18n:check\` | \`$i18n_exit_code\` | \`$i18n_seconds\` |"
+  if [ "$i18n_exit_code" != "0" ]; then
+    policy_status="failed"
+  fi
+
+  policy_seconds="$(( $(date +%s) - policy_start ))"
+  if [ "$policy_status" != "ok" ]; then
+    if [ "$guard_exit_code" != "0" ]; then
+      policy_exit_code="$guard_exit_code"
+    else
+      policy_exit_code="$i18n_exit_code"
+    fi
+  fi
+fi
+
 if [ -n "$pnpm_store" ] && [ -d "$pnpm_store" ]; then
   pnpm_store_size="$(du -sh "$pnpm_store" 2>/dev/null | awk '{print $1}')"
 fi
@@ -198,6 +262,8 @@ append_summary "| Install exit code | \`$install_exit_code\` |"
 append_summary "| Install seconds | \`$install_seconds\` |"
 append_summary "| node_modules size | \`$node_modules_size\` |"
 append_summary "| pnpm store size | \`$pnpm_store_size\` |"
+append_summary "| Policy status | \`$policy_status\` |"
+append_summary "| Policy seconds | \`$policy_seconds\` |"
 
 cat > "$manifest" <<JSON
 {
@@ -222,10 +288,18 @@ cat > "$manifest" <<JSON
   "pnpmFetchRetryMinTimeout": "$(json_escape "$pnpm_fetch_retry_mintimeout")",
   "pnpmInstallFlags": "$(json_escape "$pnpm_install_flags")",
   "pnpmNetworkTimeout": "$(json_escape "$pnpm_network_timeout")",
+  "stepTimeoutSeconds": "$(json_escape "$step_timeout_seconds")",
   "installStatus": "$(json_escape "$install_status")",
   "installExitCode": "$(json_escape "$install_exit_code")",
   "installSeconds": "$(json_escape "$install_seconds")",
   "nodeModulesSize": "$(json_escape "$node_modules_size")",
+  "policyStatus": "$(json_escape "$policy_status")",
+  "policyExitCode": "$(json_escape "$policy_exit_code")",
+  "policySeconds": "$(json_escape "$policy_seconds")",
+  "guardExitCode": "$(json_escape "$guard_exit_code")",
+  "guardSeconds": "$(json_escape "$guard_seconds")",
+  "i18nExitCode": "$(json_escape "$i18n_exit_code")",
+  "i18nSeconds": "$(json_escape "$i18n_seconds")",
   "dockerVersion": "$(json_escape "$docker_version")",
   "dockerStatus": "$(json_escape "$docker_status")",
   "rootDisk": "$(json_escape "$disk_root")",
@@ -237,4 +311,8 @@ echo "manifest: $manifest"
 
 if [ "$install_exit_code" != "0" ]; then
   exit "$install_exit_code"
+fi
+
+if [ "$policy_exit_code" != "0" ]; then
+  exit "$policy_exit_code"
 fi
