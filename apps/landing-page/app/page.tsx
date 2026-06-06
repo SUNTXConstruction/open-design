@@ -226,9 +226,13 @@ export default function Page({
   /*
    * Frontier model brands AMR routes to, shown as a monochrome logo strip
    * (mirrors opencode's Zen band). Names are display-only and not part of
-   * the localized copy — they are product/brand marks. SVGs live in
-   * /public/agents/ and inherit `currentColor` so the strip reads as one
-   * ink-toned row rather than a clash of brand colors.
+   * the localized copy — they are product/brand marks. The SVGs in
+   * /public/agents/ use fill="currentColor"; rendered through <img> they
+   * resolve against the SVG's own default ink (near-black), so the strip
+   * reads as one dark monochrome row. (An <img>-loaded SVG renders in an
+   * isolated context and cannot inherit the page's `color`, so recoloring
+   * the strip would require inlining the SVGs or a CSS mask — not a one-
+   * line `color:` change.)
    */
   const amrModelLogos: ReadonlyArray<{ slug: string; name: string }> = [
     { slug: 'openai', name: 'OpenAI' },

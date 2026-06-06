@@ -948,7 +948,11 @@ body.newsletter-popup-visible .side-rail.right {
 }
 
 /* Static monochrome vendor-logo row, centered, trailing with an ellipsis
- * that signals "and more" beyond the marks shown. */
+ * that signals "and more" beyond the marks shown. The logos are <img>-loaded
+ * SVGs (fill="currentColor"), which render in an isolated context and cannot
+ * inherit this stylesheet's color — they paint in the SVG's own default ink
+ * (near-black). The opacity below is what softens the row to read alongside
+ * the warm body type; recoloring would need inlined SVGs or a CSS mask. */
 .amr-band-logos {
   display: flex;
   flex-wrap: wrap;
@@ -967,8 +971,7 @@ body.newsletter-popup-visible .side-rail.right {
   width: 26px;
   height: 26px;
   display: block;
-  color: var(--ink-soft);
-  opacity: 0.78;
+  opacity: 0.74;
   transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .amr-band-logos li:hover .amr-band-logo {
