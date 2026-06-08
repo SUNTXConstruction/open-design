@@ -177,7 +177,7 @@ finishing the task. Prefer a shell trap around the whole smoke script:
 ```bash
 CHROME_USER_DATA_DIR=/tmp/od-agent-browser-chrome
 cleanup_agent_browser() {
-  pkill -f "--user-data-dir=${CHROME_USER_DATA_DIR}" 2>/dev/null || true
+  pkill -f -- "--user-data-dir=${CHROME_USER_DATA_DIR}" 2>/dev/null || true
 }
 trap cleanup_agent_browser EXIT INT TERM
 ```
