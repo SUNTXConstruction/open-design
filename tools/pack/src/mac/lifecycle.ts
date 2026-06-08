@@ -30,7 +30,7 @@ import type { ToolPackConfig } from "../config.js";
 import { readToolPackLauncherRuntimeSnapshot } from "../launcher-runtime-snapshot.js";
 import { PACKAGED_CONFIG_PATH_ENV, writeLaunchPackagedConfig } from "./app-config.js";
 import { DESKTOP_LOG_ECHO_ENV } from "./constants.js";
-import { clearQuarantine, pathExists } from "./fs.js";
+import { pathExists, scrubMacExtendedAttributes } from "./fs.js";
 import { resolveMacInstallIdentity } from "./identity.js";
 import { desktopIdentityPath, desktopLogPath, macAppExecutablePath, resolveMacPaths } from "./paths.js";
 import type { DesktopRootIdentityFallback, DesktopRootIdentityMarker, MacCleanupResult, MacInspectResult, MacInstallResult, MacStartResult, MacStartSource, MacStopResult, MacUninstallResult } from "./types.js";
@@ -506,7 +506,7 @@ export async function installPackedMacDmg(config: ToolPackConfig): Promise<MacIn
       "-quiet",
     ]);
     await execFileAsync("ditto", [join(paths.mountPoint, identity.publicAppBundleName), paths.installedAppPath]);
-    await clearQuarantine(paths.installedAppPath);
+    await scrubMacExtendedAttributes(paths.installedAppPath);
   } finally {
     detached = await detachMount(paths.mountPoint);
   }

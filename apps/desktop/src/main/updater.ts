@@ -94,6 +94,7 @@ const WINDOWS_DEFERRED_INSTALLER_TIMEOUT_MS = 10 * 60 * 1000;
 const ARTIFACT_DOWNLOAD_MAX_ATTEMPTS = 3;
 const DESKTOP_UPDATE_CHANNEL_VALUES = new Set<string>(Object.values(DESKTOP_UPDATE_CHANNELS));
 const execFileAsync = promisify(execFile);
+const MAC_PAYLOAD_XATTRS_TO_SCRUB = ["com.apple.quarantine", "com.apple.provenance"] as const;
 
 export type DesktopUpdaterConfigInput = {
   appVersion?: string | null;
@@ -1124,6 +1125,9 @@ async function defaultExtractLauncherPayloadArchive(input: LauncherPayloadExtrac
   await mkdir(input.destinationRoot, { recursive: true });
   if (input.platform === "darwin") {
     await execFileAsync("ditto", ["-x", "-k", input.archivePath, input.destinationRoot]);
+    for (const attribute of MAC_PAYLOAD_XATTRS_TO_SCRUB) {
+      await execFileAsync("xattr", ["-dr", attribute, input.destinationRoot]).catch(() => undefined);
+    }
     return;
   }
   if (input.platform === "win32") {

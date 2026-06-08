@@ -16,7 +16,7 @@ function countOccurrences(content: string, needle: string): number {
 
 describe("release workflows", () => {
   it("requires Vela CLI only for beta mac arm64 packaging", async () => {
-    const [beta, betaSelfHosted, preview, stable, buildMac, buildWin, prepareMac, prepareWin, publishPlatform, winLifecycle] = await Promise.all([
+    const [beta, betaSelfHosted, preview, stable, buildMac, buildWin, prepareMac, prepareWin, publishPlatform, winLifecycle, desktopUpdater, macBuild, macFs] = await Promise.all([
       readFile(new URL("../../../.github/workflows/release-beta.yml", import.meta.url), "utf8"),
       readFile(new URL("../../../.github/workflows/release-beta-s.yml", import.meta.url), "utf8"),
       readFile(new URL("../../../.github/workflows/release-preview.yml", import.meta.url), "utf8"),
@@ -27,6 +27,9 @@ describe("release workflows", () => {
       readFile(new URL("../../../.github/workflow/scripts/release/prepare-platform-assets.ps1", import.meta.url), "utf8"),
       readFile(new URL("../../../.github/workflow/scripts/release/storage/publish-platform.ts", import.meta.url), "utf8"),
       readFile(new URL("../src/win/lifecycle.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../../apps/desktop/src/main/updater.ts", import.meta.url), "utf8"),
+      readFile(new URL("../src/mac/build.ts", import.meta.url), "utf8"),
+      readFile(new URL("../src/mac/fs.ts", import.meta.url), "utf8"),
     ]);
     const mac = sectionBetween(beta, "  build_mac_arm64:", "  build_mac_x64:");
     const macX64 = sectionBetween(beta, "  build_mac_x64:", "  build_win_x64:");
@@ -65,7 +68,19 @@ describe("release workflows", () => {
     expect(beta).toContain("verify-metadata.ts");
     expect(beta).toContain("summary-metadata.ts");
     expect(betaSelfHosted).toContain("mac_arm64_update_metadata_url:");
+    expect(betaSelfHosted).toContain("mac_arm64_delivery_mode:");
+    expect(betaSelfHosted).toContain("internal-updater");
+    expect(betaSelfHosted).toContain("public-notarized");
+    expect(selfHostedMac).toContain("RELEASE_DELIVERY_MODE: ${{ inputs.mac_arm64_delivery_mode }}");
+    expect(selfHostedMac).toContain("RELEASE_SIGN_MODE: ${{ inputs.mac_arm64_delivery_mode == 'internal-updater' && 'sign-only' || inputs.mac_arm64_sign_mode }}");
+    expect(betaSelfHosted).toContain("public-notarized mac_arm64_delivery_mode requires mac_arm64_sign_mode=notarize");
     expect(selfHostedMac).toContain("OD_PACKAGED_E2E_MAC_UPDATE_METADATA_URL: ${{ inputs.mac_arm64_update_metadata_url }}");
+    expect(selfHostedMac).toContain("RELEASE_ARTIFACT_MODE: dmg-and-payload");
+    expect(macBuild).toContain('runPhase("xattr-scrub"');
+    expect(macBuild).toContain("scrubMacExtendedAttributes(paths.appPath)");
+    expect(macFs).toContain("com.apple.provenance");
+    expect(desktopUpdater).toContain("MAC_PAYLOAD_XATTRS_TO_SCRUB");
+    expect(desktopUpdater).toContain('execFileAsync("xattr", ["-dr", attribute, input.destinationRoot])');
     expect(betaSelfHosted).not.toContain("publish-beta-metadata.ts");
     expect(betaSelfHosted).not.toContain("verify-beta-metadata.ts");
     expect(betaSelfHosted).not.toContain("summary-beta.ts");
