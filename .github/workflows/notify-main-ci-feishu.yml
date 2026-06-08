@@ -131,11 +131,13 @@ jobs:
               return matches;
             }
 
+            const playwrightUiFailureTitlePattern = /(?:\d+\)\s+|\[[^\]]+\]\s+)?(?:\[chromium\]\s+)?[›>]\s+(ui\/[^›]+)\s+›\s+(.+)/;
+
             function extractTopFailures(text) {
               const failures = [];
               for (const line of text.split('\n')) {
                 const clean = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
-                const match = clean.match(/(?:\d+\)\s+|\[[^\]]+\]\s+)?(?:\[chromium\]\s+)?[›>]\s+(ui\/[^›]+)\s+›\s+(.+)/);
+                const match = clean.match(playwrightUiFailureTitlePattern);
                 if (match) {
                   failures.push(`${match[1]} › ${match[2].replace(/\s+/g, ' ')}`);
                 }
@@ -151,8 +153,7 @@ jobs:
               const selected = [];
               let contextUntil = -1;
               const startPatterns = [
-                /^\s*\d+\)\s+\[[^\]]+\]\s+›\s+ui\//,
-                /\[[^\]]+\]\s+›\s+ui\/.*\s+›\s+/,
+                playwrightUiFailureTitlePattern,
                 /##\[error\]/,
                 /^\s*Error:/,
                 /Test timeout of \d+ms exceeded/i,
@@ -182,6 +183,35 @@ jobs:
 
               return selected.join('\n').slice(0, 120_000);
             }
+
+            function assertFailureSignalFixtures() {
+              const fixtures = [
+                {
+                  name: 'browser-prefixed Playwright title',
+                  log: [
+                    "1) [chromium] › ui/example-prefixed.test.ts:1:1 › [P0] prefixed failure",
+                    "Error: locator.click: Test timeout of 30000ms exceeded.",
+                  ].join('\n'),
+                  expected: '[P0] prefixed failure',
+                },
+                {
+                  name: 'no-browser Playwright title',
+                  log: [
+                    "1) › ui/example-unprefixed.test.ts:1:1 › [P0] unprefixed failure",
+                    "Error: locator.click: Test timeout of 30000ms exceeded.",
+                  ].join('\n'),
+                  expected: '[P0] unprefixed failure',
+                },
+              ];
+              for (const fixture of fixtures) {
+                const signalText = extractFailureSignalText(fixture.log);
+                if (!signalText.includes(fixture.expected)) {
+                  throw new Error(`Failure signal fixture failed for ${fixture.name}`);
+                }
+              }
+            }
+
+            assertFailureSignalFixtures();
 
             function classifyFailure({ runName, conclusion, problemJobs, logs }) {
               const combined = logs.join('\n').slice(0, 250_000);
