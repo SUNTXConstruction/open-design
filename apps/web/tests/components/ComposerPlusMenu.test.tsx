@@ -79,4 +79,112 @@ describe('ComposerPlusMenu pick-row caret protection', () => {
     expect(mcpSearch.value).toBe('');
     expect(screen.getByText('Linear')).toBeTruthy();
   });
+
+  it('portals the menu and constrains it to the available viewport height', async () => {
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 280 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 420 });
+
+    try {
+      renderMenu();
+      const trigger = screen.getByTestId('plus-trigger') as HTMLButtonElement;
+      trigger.getBoundingClientRect = () =>
+        ({
+          x: 8,
+          y: 376,
+          top: 376,
+          left: 8,
+          right: 36,
+          bottom: 404,
+          width: 28,
+          height: 28,
+          toJSON: () => ({}),
+        }) as DOMRect;
+
+      fireEvent.click(trigger);
+
+      const menu = screen.getByRole('menu');
+      expect(menu.parentElement).toBe(document.body);
+      expect(menu.style.left).toBe('12px');
+      expect(menu.style.width).toBe('190px');
+      expect(menu.style.maxHeight).toBe('356px');
+      expect(menu.style.top).toBe('auto');
+      expect(menu.style.bottom).toBe('52px');
+      expect(screen.getByRole('menuitem', { name: /Connectors/i })).toBeTruthy();
+      expect(screen.getByRole('menuitem', { name: /Plugins/i })).toBeTruthy();
+      expect(screen.getByRole('menuitem', { name: /^MCP/i })).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
+    }
+  });
+
+  it('opens flyouts to the left when the right edge would overflow', () => {
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 420 });
+
+    try {
+      renderMenu();
+      const trigger = screen.getByTestId('plus-trigger') as HTMLButtonElement;
+      trigger.getBoundingClientRect = () =>
+        ({
+          x: 620,
+          y: 376,
+          top: 376,
+          left: 620,
+          right: 648,
+          bottom: 404,
+          width: 28,
+          height: 28,
+          toJSON: () => ({}),
+        }) as DOMRect;
+
+      fireEvent.click(trigger);
+      const menu = screen.getByRole('menu');
+      expect(menu.className).toContain('plus-menu__popup--flyout-left');
+
+      fireEvent.click(screen.getByRole('menuitem', { name: /Plugins/i }));
+      expect(screen.getByRole('menuitem', { name: /Deck Maker/i })).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
+    }
+  });
+
+  it('contains flyouts inside the menu when neither side has enough room', () => {
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 420 });
+
+    try {
+      renderMenu();
+      const trigger = screen.getByTestId('plus-trigger') as HTMLButtonElement;
+      trigger.getBoundingClientRect = () =>
+        ({
+          x: 220,
+          y: 376,
+          top: 376,
+          left: 220,
+          right: 248,
+          bottom: 404,
+          width: 28,
+          height: 28,
+          toJSON: () => ({}),
+        }) as DOMRect;
+
+      fireEvent.click(trigger);
+      const menu = screen.getByRole('menu');
+      expect(menu.className).toContain('plus-menu__popup--flyout-contained');
+
+      fireEvent.click(screen.getByRole('menuitem', { name: /Plugins/i }));
+      expect(screen.getByRole('menuitem', { name: /Deck Maker/i })).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
+    }
+  });
 });
