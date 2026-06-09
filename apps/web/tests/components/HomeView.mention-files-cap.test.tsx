@@ -97,4 +97,47 @@ describe('HomeView design-files mention picker', () => {
       expect(within(picker).getByText(`design-${i}.png`)).toBeTruthy();
     }
   });
+
+  it('keeps the All overview count aligned with its preview-sized render', async () => {
+    stubContextFetch();
+
+    const files = Array.from(
+      { length: 7 },
+      (_, i) => new File(['x'], `design-${i + 1}.png`, { type: 'image/png' }),
+    );
+
+    render(
+      <HomeView
+        projects={[]}
+        onSubmit={() => undefined}
+        onOpenProject={() => undefined}
+        onViewAllProjects={() => undefined}
+      />,
+    );
+
+    const input = await screen.findByTestId('home-hero-input');
+    fireEvent.paste(input, {
+      clipboardData: {
+        files,
+        items: files.map((file) => ({ kind: 'file', getAsFile: () => file })),
+      },
+    });
+    await waitFor(() => expect(screen.getByText('design-1.png')).toBeTruthy());
+
+    setHomeHeroPrompt('@design');
+    await settle();
+
+    // The default All overview previews only the first six files, so its badge
+    // must read 6 — not the full 7 — and exactly six file options render. This
+    // prevents the count/content mismatch from relocating to the All tab.
+    const allTab = await screen.findByRole('tab', { name: /^all/i });
+    expect(allTab.textContent).toContain('6');
+    expect(allTab.textContent).not.toContain('7');
+
+    const picker = screen.getByTestId('home-hero-plugin-picker');
+    const shown = Array.from({ length: 7 }, (_, i) => `design-${i + 1}.png`).filter(
+      (name) => within(picker).queryByText(name) !== null,
+    );
+    expect(shown).toHaveLength(6);
+  });
 });
