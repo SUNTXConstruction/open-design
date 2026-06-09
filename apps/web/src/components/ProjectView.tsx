@@ -2242,8 +2242,9 @@ export function ProjectView({
     controller: AbortController,
     cancelController: AbortController,
   ) => {
-    if (!clearActiveRunRefs(conversationId, controller, cancelController)) return;
+    if (!clearActiveRunRefs(conversationId, controller, cancelController)) return false;
     clearStreamingMarker(conversationId);
+    return true;
   }, [clearActiveRunRefs, clearStreamingMarker]);
 
   const handleAssistantFeedback = useCallback(
@@ -3348,8 +3349,12 @@ export function ProjectView({
             if (runCommentAttachments.length > 0) {
               void patchAttachedStatuses(runCommentAttachments, 'failed');
             }
-            clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
-            updateConversationLatestRun('failed', endedAt);
+            const ownsCurrentRun = clearCurrentRunStreamingMarker(
+              runConversationId,
+              controller,
+              cancelController,
+            );
+            if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
             void refreshProjectFiles();
             onProjectsRefresh();
             return;
@@ -3367,8 +3372,12 @@ export function ProjectView({
           if (runCommentAttachments.length > 0) {
             void patchAttachedStatuses(runCommentAttachments, 'needs_review');
           }
-          clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
-          updateConversationLatestRun(finalRunStatus ?? 'succeeded', endedAt);
+          const ownsCurrentRun = clearCurrentRunStreamingMarker(
+            runConversationId,
+            controller,
+            cancelController,
+          );
+          if (ownsCurrentRun) updateConversationLatestRun(finalRunStatus ?? 'succeeded', endedAt);
           // Refetch the file list directly (rather than just bumping the
           // refresh signal) so we can diff against the pre-turn snapshot
           // and attach the new files to the assistant message as download
@@ -3418,8 +3427,12 @@ export function ProjectView({
           if (runCommentAttachments.length > 0) {
             void patchAttachedStatuses(runCommentAttachments, 'failed');
           }
-          clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
-          updateConversationLatestRun('failed', endedAt);
+          const ownsCurrentRun = clearCurrentRunStreamingMarker(
+            runConversationId,
+            controller,
+            cancelController,
+          );
+          if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
           setMessages((curr) => {
             const finalized = curr.find((m) => m.id === assistantId);
             if (finalized) persistMessage(finalized, { telemetryFinalized: true });

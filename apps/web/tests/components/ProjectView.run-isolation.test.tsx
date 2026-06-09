@@ -276,6 +276,11 @@ vi.mock('../../src/components/ChatPane', () => ({
         <output data-testid="active-conversation">{activeConversationId}</output>
         <output data-testid="streaming-state">{streaming ? 'streaming' : 'idle'}</output>
         <output data-testid="chat-error">{error}</output>
+        <output data-testid="conversation-latest-runs">
+          {conversations
+            .map((conversation) => `${conversation.id}:${conversation.latestRun?.status ?? ''}`)
+            .join('\n')}
+        </output>
         <output data-testid="assistant-events">
           {(messages ?? [])
             .filter((message) => message.role === 'assistant')
@@ -863,7 +868,7 @@ describe('ProjectView conversation run isolation', () => {
     expect(payload.history?.at(-1)).toMatchObject({ role: 'user', content: 'hello from c' });
   });
 
-  it('keeps the replacement run streaming when the interrupted run reports canceled late', async () => {
+  it('keeps the replacement run active when the interrupted run reports canceled and done late', async () => {
     const queuedSend = {
       id: 'queued-1',
       conversationId: 'conv-a',
@@ -877,18 +882,20 @@ describe('ProjectView conversation run isolation', () => {
       JSON.stringify([queuedSend]),
     );
 
-    const interruptedRunStatuses: Array<(status: NonNullable<ChatMessage['runStatus']>) => void> = [];
-    reattachDaemonRun.mockImplementation(async (input: unknown) => {
-      const onRunStatus = (input as {
-        onRunStatus?: (status: NonNullable<ChatMessage['runStatus']>) => void;
-      }).onRunStatus;
-      if (onRunStatus) interruptedRunStatuses.push(onRunStatus);
-      return new Promise<void>(() => {});
-    });
+    conversationAMessages = [];
+    const daemonRuns: Array<{
+      handlers: { onDone: (fullText?: string) => void };
+      onRunCreated?: (runId: string) => void;
+      onRunStatus?: (status: NonNullable<ChatMessage['runStatus']>) => void;
+    }> = [];
     streamViaDaemon.mockImplementation(async (input: unknown) => {
       const options = input as {
+        handlers: { onDone: (fullText?: string) => void };
+        onRunCreated?: (runId: string) => void;
         onRunStatus?: (status: NonNullable<ChatMessage['runStatus']>) => void;
       };
+      daemonRuns.push(options);
+      options.onRunCreated?.(`run-${daemonRuns.length}`);
       options.onRunStatus?.('running');
     });
 
@@ -899,17 +906,30 @@ describe('ProjectView conversation run isolation', () => {
     );
 
     await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
+    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
+
+    fireEvent.click(screen.getByTestId('send-message'));
+
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByTestId('streaming-state').textContent).toBe('streaming'));
     await waitFor(() => expect(screen.getByTestId('send-queued-0')).toBeTruthy());
 
     fireEvent.click(screen.getByTestId('send-queued-0'));
 
-    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
-    interruptedRunStatuses[0]?.('canceled');
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation-latest-runs').textContent).toContain('conv-a:running'),
+    );
+
+    await act(async () => {
+      daemonRuns[0]?.onRunStatus?.('canceled');
+      daemonRuns[0]?.handlers.onDone('interrupted done');
+    });
 
     await waitFor(() => expect(screen.getByTestId('streaming-state').textContent).toBe('streaming'));
     expect(screen.getByTestId('workspace-streaming-state').textContent).toBe('streaming');
-    expect(streamViaDaemon).toHaveBeenCalledWith(expect.objectContaining({
+    expect(screen.getByTestId('conversation-latest-runs').textContent).toContain('conv-a:running');
+    expect(streamViaDaemon).toHaveBeenLastCalledWith(expect.objectContaining({
       conversationId: 'conv-a',
       history: expect.arrayContaining([
         expect.objectContaining({ role: 'user', content: 'hello from c' }),
