@@ -258,8 +258,12 @@ for (const id of ids) {
     hash = createHash('sha256').update(html).update(` ${BAKE_VERSION}`).digest('hex').slice(0, 16);
   } catch {}
   const prev = previews[id];
-  if (hash && prev && prev.hash === hash
-      && existsSync(path.join(OUT, prev.video)) && existsSync(path.join(OUT, prev.poster))) {
+  // In CI the unchanged clips already live on R2 (not on disk), so PREVIEW_REMOTE
+  // trusts the manifest hash without a local-file check; locally we also confirm
+  // the files are actually present before reusing.
+  const filesPresent = process.env.PREVIEW_REMOTE === '1'
+    || (prev && existsSync(path.join(OUT, prev.video)) && existsSync(path.join(OUT, prev.poster)));
+  if (hash && prev && prev.hash === hash && filesPresent) {
     reused += 1;
     console.log(`  = ${id}: unchanged, reused`);
     continue;

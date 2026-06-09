@@ -1,0 +1,100 @@
+name: bake-plugin-previews
+
+# Pre-render the home gallery's plugin previews to small H.264 clips + posters.
+# We bake ALL plugins every run; the script's content-hash skip (manifest hash +
+# BAKE_VERSION) makes that cheap — only plugins whose page actually changed are
+# re-rendered and re-uploaded. Runs post-merge (so fork contributions are covered
+# with full secrets) and nightly as a self-healing sweep. Until a plugin is baked
+# the gallery falls back to its live example.html iframe, so there is no gap.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/_official/**'
+      - 'scripts/bake-plugin-previews.mjs'
+  schedule:
+    - cron: '0 18 * * *' # nightly self-healing full sweep
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # commit the refreshed manifest back to main
+
+concurrency:
+  group: bake-plugin-previews
+  cancel-in-progress: false
+
+jobs:
+  bake:
+    name: Bake plugin previews
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Install ffmpeg + puppeteer-core
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          npm install --no-save puppeteer-core
+
+      - name: Build daemon + tools
+        run: |
+          pnpm --filter "./packages/**" build
+          pnpm --filter @open-design/daemon build
+          pnpm --filter @open-design/tools-dev build
+
+      - name: Start daemon
+        run: |
+          pnpm tools-dev start daemon --namespace ci --daemon-port 17470
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:17470/api/plugins; then
+              echo "daemon ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "daemon did not become ready" >&2; exit 1
+
+      - name: Bake (content-hash skip reuses unchanged plugins)
+        env:
+          BASE_URL: http://127.0.0.1:17470
+          # The CI clips live on R2, not on disk, so trust the manifest hash.
+          PREVIEW_REMOTE: '1'
+        run: |
+          export CHROME="$(which google-chrome || which google-chrome-stable || which chromium-browser)"
+          mkdir -p .tmp/plugin-previews
+          # Seed with the committed manifest so the hash skip can reuse entries.
+          cp data/plugin-previews/manifest.json .tmp/plugin-previews/manifest.json
+          node scripts/bake-plugin-previews.mjs --out .tmp/plugin-previews
+
+      - name: Upload clips to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          # cp (not sync --delete) so untouched clips already on R2 stay put.
+          aws s3 cp .tmp/plugin-previews "s3://${{ secrets.R2_BUCKET }}/plugin-previews/" \
+            --recursive --no-progress \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+            --exclude manifest.json
+
+      - name: Commit refreshed manifest
+        run: |
+          cp .tmp/plugin-previews/manifest.json data/plugin-previews/manifest.json
+          if git diff --quiet -- data/plugin-previews/manifest.json; then
+            echo "manifest unchanged"; exit 0
+          fi
+          git config user.name "open-design-bot"
+          git config user.email "bot@open-design.ai"
+          git add data/plugin-previews/manifest.json
+          git commit -m "chore(plugin-previews): refresh baked preview manifest [skip ci]"
+          git push origin HEAD:main
+
+      - name: Stop daemon
+        if: always()
+        run: pnpm tools-dev stop --namespace ci || true

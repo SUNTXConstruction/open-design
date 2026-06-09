@@ -33,7 +33,10 @@ export interface BakedPreviewBlock {
 export function resolvePluginPreviewsDir(projectRoot: string): string {
   const env = process.env.OD_PLUGIN_PREVIEWS_DIR;
   if (env) return path.isAbsolute(env) ? env : path.resolve(projectRoot, env);
-  return path.join(projectRoot, '.od', 'plugin-previews');
+  // Default to the checked-in manifest dir (CI commits manifest.json here; the
+  // clips themselves live on R2). Local dev overrides OD_PLUGIN_PREVIEWS_DIR to
+  // a freshly-baked dir that also holds the mp4/poster files for local serving.
+  return path.join(projectRoot, 'data', 'plugin-previews');
 }
 
 let cache: { dir: string; mtimeMs: number; previews: Record<string, BakeEntry> } | null = null;
