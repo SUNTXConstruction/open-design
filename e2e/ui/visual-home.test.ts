@@ -365,6 +365,8 @@ test('[P2] captures the workspace staged contexts surface', async ({ page }) => 
   await gotoVisualHome(page);
   await gotoVisualWorkspace(page);
 
+  await page.getByTestId('design-files-tab').click();
+  await expect(page.getByTestId('design-files-tab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('staged-contexts')).toContainText('Design Files');
   await waitForVisualFonts(page);
 
