@@ -491,7 +491,7 @@ export async function generateMedia(args: {
 
   const credentials = providerConfigOverride ?? await resolveProviderConfig(projectRoot, def.provider);
   const customImageCredentials =
-    surface === 'image' && def.provider === 'openai'
+    !providerConfigOverride && surface === 'image' && def.provider === 'openai'
       ? await resolveProviderConfig(projectRoot, 'custom-image')
       : null;
 

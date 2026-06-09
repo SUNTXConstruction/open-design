@@ -199,6 +199,59 @@ describe('OpenAI-compatible media providers', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('prefers providerConfigOverride over matching custom-image credentials', async () => {
+    await writeConfig({
+      providers: {
+        'custom-image': {
+          apiKey: 'proxy-test-key',
+          baseUrl: 'https://proxy.example.test/v1/images/generations',
+          model: 'gpt-image-2',
+        },
+      },
+    });
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe('https://api.openai.com/v1/images/generations');
+      expect(init?.method).toBe('POST');
+      expect(init?.headers).toMatchObject({
+        authorization: 'Bearer sk-byok',
+        'content-type': 'application/json',
+      });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        prompt: 'A clean app icon with glass material',
+        model: 'gpt-image-2',
+        n: 1,
+        quality: 'high',
+        size: '1024x1024',
+      });
+      return new Response(JSON.stringify({
+        data: [{ b64_json: PNG_BASE64 }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await generateMedia({
+      projectRoot,
+      projectsRoot,
+      projectId: 'project-1',
+      surface: 'image',
+      model: 'gpt-image-2',
+      prompt: 'A clean app icon with glass material',
+      output: 'proxy-byok.png',
+      providerConfigOverride: {
+        apiKey: 'sk-byok',
+        baseUrl: 'https://api.openai.com/v1',
+      },
+    });
+
+    expect(result.providerId).toBe('openai');
+    expect(result.providerNote).toContain('openai/gpt-image-2');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('rewrites custom-image text-only requests back to /v1/images/generations when configured with an edits URL', async () => {
     await writeConfig({
       providers: {
