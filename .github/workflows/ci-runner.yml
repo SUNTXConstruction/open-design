@@ -26,11 +26,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
       - name: Run runner CI protocol
         run: .github/workflows/scripts/ci-gate.sh --provider runner --mode default --results-path .od/ci-gate/ci-results.json
 
