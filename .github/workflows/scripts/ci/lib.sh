@@ -34,10 +34,11 @@ ci_gate_timed_step() {
   local finished_at
   local duration_ms
   local step_exit
+  local step_timeout_seconds="${CI_GATE_STEP_TIMEOUT_SECONDS:-600}"
 
   started_at="$(ci_gate_now_ms)"
   set +e
-  "$@"
+  timeout "${step_timeout_seconds}s" "$@"
   step_exit="$?"
   set -e
   finished_at="$(ci_gate_now_ms)"
