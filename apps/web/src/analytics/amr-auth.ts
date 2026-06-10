@@ -20,6 +20,7 @@ import type {
   TrackingPageName,
 } from '@open-design/contracts/analytics';
 import { amrEntryPageForSource } from './amr-attribution';
+import { setAnalyticsUserId } from './client';
 import { trackAmrAuthResult } from './events';
 
 type Track = (
@@ -61,11 +62,21 @@ export function beginAmrAuthTracking(
 // Report the attempt's terminal outcome. First caller wins; later calls
 // (other pollers settling on the same state) are no-ops. Safe to call
 // when nothing is armed.
+//
+// Success callers pass `signedInUserId` from the poll status they just
+// observed. The id is registered on the analytics client BEFORE the
+// capture below — and before the single-flight gate, since registration
+// is idempotent — so the success row itself carries `user_id` instead of
+// waiting for React to commit the status and App.tsx to re-register it.
 export function resolveAmrAuthTracking(
   track: Track,
   result: AmrAuthResultProps['result'],
   errorCode?: string,
+  options?: { signedInUserId?: string | null },
 ): void {
+  if (options && 'signedInUserId' in options) {
+    setAnalyticsUserId(options.signedInUserId ?? null);
+  }
   if (!active) return;
   const attempt = active;
   active = null;

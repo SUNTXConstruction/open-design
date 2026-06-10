@@ -7,6 +7,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AmrEntryAttribution } from '@open-design/contracts/analytics';
+
+// Spy on the analytics client so the user_id ordering contract is
+// observable without a live PostHog instance.
+vi.mock('../src/analytics/client', () => ({
+  setAnalyticsUserId: vi.fn(),
+}));
+
+import { setAnalyticsUserId } from '../src/analytics/client';
 import {
   beginAmrAuthTracking,
   resolveAmrAuthTracking,
@@ -26,6 +34,7 @@ describe('amr-auth single-flight tracking', () => {
     track.mockClear();
     // Drain any attempt a previous test left armed.
     resolveAmrAuthTracking(() => undefined, 'cancelled');
+    vi.mocked(setAnalyticsUserId).mockClear();
   });
 
   it('fires one amr_auth_result with attribution on success', () => {
@@ -69,6 +78,40 @@ describe('amr-auth single-flight tracking', () => {
     });
     expect(props).not.toHaveProperty('entry_id');
     expect(props).not.toHaveProperty('source_detail');
+  });
+
+  // PR #4042 review (Siri-Ray, round 2): the success capture used to run
+  // before the AMR account id reached the analytics client, so the first
+  // amr_auth_result(success) row lacked the cross-project join key.
+  it('registers the signed-in user id BEFORE emitting the success row', () => {
+    beginAmrAuthTracking(attribution);
+    resolveAmrAuthTracking(track, 'success', undefined, {
+      signedInUserId: 'usr_amr_42',
+    });
+    const setUserMock = vi.mocked(setAnalyticsUserId);
+    expect(setUserMock).toHaveBeenCalledWith('usr_amr_42');
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(setUserMock.mock.invocationCallOrder[0]).toBeLessThan(
+      track.mock.invocationCallOrder[0] ?? Number.NEGATIVE_INFINITY,
+    );
+  });
+
+  it('still registers the user id when a concurrent poller already resolved', () => {
+    beginAmrAuthTracking(attribution);
+    resolveAmrAuthTracking(track, 'success');
+    // A second poller settles on the same signed-in state after the gate
+    // closed: no duplicate event, but the id registration must not be lost.
+    resolveAmrAuthTracking(track, 'success', undefined, {
+      signedInUserId: 'usr_amr_42',
+    });
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(setAnalyticsUserId)).toHaveBeenCalledWith('usr_amr_42');
+  });
+
+  it('does not touch the registered user id on failure paths', () => {
+    beginAmrAuthTracking(attribution);
+    resolveAmrAuthTracking(track, 'failed', 'login_stopped');
+    expect(vi.mocked(setAnalyticsUserId)).not.toHaveBeenCalled();
   });
 
   it('lets a new attempt supersede a stale armed one', () => {

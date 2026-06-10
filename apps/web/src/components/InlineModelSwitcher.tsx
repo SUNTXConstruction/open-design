@@ -189,7 +189,10 @@ export function InlineModelSwitcher({
       const next = await refreshAmrStatus();
       const outcome = amrLoginPollOutcome(next, startedAt);
       if (outcome === 'signed-in') {
-        resolveAmrAuthTracking(analytics.track, 'success');
+        resolveAmrAuthTracking(analytics.track, 'success', undefined, {
+          signedInUserId: next?.user?.id ?? null,
+        });
+        notifyAmrLoginStatusChanged();
         stopAmrPolling();
         amrLoginStartedAtRef.current = null;
         setAmrLoginPending(false);

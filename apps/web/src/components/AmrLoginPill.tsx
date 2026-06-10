@@ -294,7 +294,12 @@ export function AmrLoginPill({
       const next = await refresh();
       const outcome = amrLoginPollOutcome(next, startedAt);
       if (outcome === 'signed-in') {
-        resolveAmrAuthTracking(analytics.track, 'success');
+        resolveAmrAuthTracking(analytics.track, 'success', undefined, {
+          signedInUserId: next?.user?.id ?? null,
+        });
+        // Wake the app-level status sync so configure_type flips to 'amr'
+        // on the very next capture, not on an unrelated later refresh.
+        notifyAmrLoginStatusChanged();
         stopPolling();
         loginStartedAtRef.current = null;
         loginPendingRef.current = false;

@@ -1523,7 +1523,10 @@ function OnboardingView({
       if (nextStatus) setAmrStatus(nextStatus);
       const outcome = amrLoginPollOutcome(nextStatus, startedAt);
       if (outcome === 'signed-in') {
-        resolveAmrAuthTracking(analytics.track, 'success');
+        resolveAmrAuthTracking(analytics.track, 'success', undefined, {
+          signedInUserId: nextStatus?.user?.id ?? null,
+        });
+        notifyAmrLoginStatusChanged();
         return true;
       }
       if (outcome === 'stopped' || outcome === 'timed-out') {
