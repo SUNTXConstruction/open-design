@@ -130,7 +130,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(skipIdx).toBeGreaterThanOrEqual(0);
       expect(skipIdx).toBeLessThan(discoveryIdx);
       expect(prompt).toMatch(/do NOT emit `?<question-form id="discovery">`?/i);
-      expect(prompt).toContain('Do not call AskUserQuestion');
+      expect(prompt).toContain('Do not emit any question form');
       expect(prompt).toContain('choose reasonable defaults for any missing details');
     });
   });

@@ -290,9 +290,7 @@ describe('countDesignSystemPreviewModules', () => {
   });
 });
 
-// Helper: emit a bare tool_use (no result) for a named tool. Clarification
-// detection only needs the tool_use to appear; AskUserQuestion is answered
-// out-of-band via POST /api/runs/:id/tool-result, not a stream tool_result.
+// Helper: emit a bare tool_use (no result) for a named tool.
 function toolUse(name: string, id = freshId()) {
   return [
     {
@@ -302,17 +300,28 @@ function toolUse(name: string, id = freshId()) {
   ];
 }
 
+// Helper: emit assistant streamed text as a `text_delta` agent event — the
+// shape `runAskedUserQuestion` scans for a `<question-form>` clarification.
+function questionFormText(text = 'Quick brief <question-form id="q">…</question-form>') {
+  return [{ event: 'agent', data: { type: 'text_delta', text } }];
+}
+
 describe('runAskedUserQuestion', () => {
   it('returns false for an empty event list', () => {
     expect(runAskedUserQuestion([])).toBe(false);
   });
 
-  it('returns true when the run raised an AskUserQuestion card', () => {
-    expect(runAskedUserQuestion(toolUse('AskUserQuestion'))).toBe(true);
+  it('returns true when the run emitted a <question-form> clarification', () => {
+    expect(runAskedUserQuestion(questionFormText())).toBe(true);
   });
 
-  it('matches the snake_case ask_user_question proxy shape', () => {
-    expect(runAskedUserQuestion(toolUse('ask_user_question'))).toBe(true);
+  it('reassembles a marker split across text_delta chunks', () => {
+    expect(
+      runAskedUserQuestion([
+        { event: 'agent', data: { type: 'text_delta', text: 'ask a <question-' } },
+        { event: 'agent', data: { type: 'text_delta', text: 'form id="q">…</question-form>' } },
+      ]),
+    ).toBe(true);
   });
 
   it('returns false for a run that only wrote artifacts', () => {
@@ -324,11 +333,11 @@ describe('runAskedUserQuestion', () => {
     ).toBe(false);
   });
 
-  it('detects the card even when mixed with other tool calls', () => {
+  it('detects the form even when mixed with other tool calls', () => {
     expect(
       runAskedUserQuestion([
         ...pair('Write', '/proj/index.html'),
-        ...toolUse('AskUserQuestion'),
+        ...questionFormText(),
       ]),
     ).toBe(true);
   });
