@@ -1,4 +1,11 @@
-import type { DesktopEvalResult, DesktopScreenshotResult, DesktopStatusSnapshot, DesktopUpdateResult } from "@open-design/sidecar-proto";
+import type {
+  DaemonStatusSnapshot,
+  DesktopEvalResult,
+  DesktopScreenshotResult,
+  DesktopStatusSnapshot,
+  DesktopUpdateResult,
+  WebStatusSnapshot,
+} from "@open-design/sidecar-proto";
 import type { ToolPackLauncherRuntimeSnapshot } from "../launcher-runtime-snapshot.js";
 import type { ToolPackUpdateCacheLifecycleSnapshot } from "../update-cache-lifecycle-snapshot.js";
 import type { CacheReport } from "../cache.js";
@@ -329,6 +336,8 @@ export type WinResetResult = {
 };
 
 export type WinInspectResult = {
+  daemonStatus: DaemonStatusSnapshot | null;
+  daemonStatusError?: string;
   eval?: DesktopEvalResult;
   launcher: ToolPackLauncherRuntimeSnapshot;
   launcherSource: {
@@ -346,4 +355,6 @@ export type WinInspectResult = {
     root: string;
   };
   update?: DesktopUpdateResult;
+  webStatus: WebStatusSnapshot | null;
+  webStatusError?: string;
 };

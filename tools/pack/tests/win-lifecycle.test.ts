@@ -63,8 +63,10 @@ describe("inspectPackedWinApp", () => {
 
     try {
       requestJsonIpc.mockReset();
-      requestJsonIpc.mockImplementation(async (_ipc: string, payload: { type?: string }) => {
+      requestJsonIpc.mockImplementation(async (ipc: string, payload: { type?: string }) => {
         if (payload.type === SIDECAR_MESSAGES.STATUS) {
+          if (ipc.includes("daemon")) return { state: "running", url: "http://127.0.0.1:1234" };
+          if (ipc.includes("web")) return { state: "running", url: "http://127.0.0.1:5678" };
           return { state: "running", url: "od://app/" };
         }
         if (payload.type === SIDECAR_MESSAGES.EVAL) {
@@ -76,6 +78,8 @@ describe("inspectPackedWinApp", () => {
       const result = await inspectPackedWinApp(createConfig(root), { expr: "document.title" });
 
       expect(result.status).toEqual({ state: "running", url: "od://app/" });
+      expect(result.daemonStatus).toEqual({ state: "running", url: "http://127.0.0.1:1234" });
+      expect(result.webStatus).toEqual({ state: "running", url: "http://127.0.0.1:5678" });
       expect(result.eval).toEqual({
         error: "IPC request timed out: test-pipe",
         ok: false,
@@ -92,8 +96,10 @@ describe("inspectPackedWinApp", () => {
 
     try {
       requestJsonIpc.mockReset();
-      requestJsonIpc.mockImplementation(async (_ipc: string, payload: { type?: string }) => {
+      requestJsonIpc.mockImplementation(async (ipc: string, payload: { type?: string }) => {
         if (payload.type === SIDECAR_MESSAGES.STATUS) {
+          if (ipc.includes("daemon")) return { state: "running", url: "http://127.0.0.1:1234" };
+          if (ipc.includes("web")) return { state: "running", url: "http://127.0.0.1:5678" };
           throw new Error("IPC request timed out: test-pipe");
         }
         throw new Error(`unexpected IPC message: ${String(payload.type)}`);
@@ -103,6 +109,8 @@ describe("inspectPackedWinApp", () => {
 
       expect(result.status).toBeNull();
       expect(result.statusError).toBe("IPC request timed out: test-pipe");
+      expect(result.daemonStatus).toEqual({ state: "running", url: "http://127.0.0.1:1234" });
+      expect(result.webStatus).toEqual({ state: "running", url: "http://127.0.0.1:5678" });
       expect(result.launcher.exists).toBe(false);
       expect(result.updateCache.releaseCount).toBe(0);
     } finally {

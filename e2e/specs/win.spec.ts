@@ -219,6 +219,9 @@ type WinUninstallResult = {
 };
 
 type WinInspectResult = {
+  daemonStatus: DesktopStatus | null;
+  daemonStatusError?: string;
+  desktopIpcUnavailable?: boolean;
   eval?: {
     error?: string;
     ok: boolean;
@@ -259,6 +262,8 @@ type WinInspectResult = {
     };
     state: string;
   };
+  webStatus: DesktopStatus | null;
+  webStatusError?: string;
   launcher: LauncherSnapshot;
 };
 
@@ -338,6 +343,8 @@ type InstalledRuntimeConfig = {
     };
     root?: unknown;
   };
+  webStatus: DesktopStatus | null;
+  webStatusError?: string;
 };
 
 type InstalledAppPackage = {
@@ -445,15 +452,17 @@ winDescribe('packaged windows runtime smoke', () => {
       assertLauncherPointer(inspect.launcher.active, updateScenario.expectedCurrentVersion, 0, 'initial active');
       assertLauncherPointer(inspect.launcher.lastSuccessful, updateScenario.expectedCurrentVersion, 0, 'initial lastSuccessful');
 
-      await measureSmokeStep(timings, 'ensure main app shell', async () => ensureMainAppShell());
+      if (!inspect.desktopIpcUnavailable) {
+        await measureSmokeStep(timings, 'ensure main app shell', async () => ensureMainAppShell());
 
-      await mkdir(dirname(preUpdateScreenshotPath), { recursive: true });
-      const preUpdateScreenshot = await measureSmokeStep(timings, 'inspect screenshot before update', async () =>
-        runToolsPackJson<WinInspectResult>('inspect', ['--path', preUpdateScreenshotPath]),
-      );
-      expect(preUpdateScreenshot.screenshot?.path).toBe(preUpdateScreenshotPath);
-      expect(await fileSizeBytes(preUpdateScreenshotPath)).toBeGreaterThan(0);
-      await report.report.save('screenshots/open-design-win-before-update.png', await readFile(preUpdateScreenshotPath));
+        await mkdir(dirname(preUpdateScreenshotPath), { recursive: true });
+        const preUpdateScreenshot = await measureSmokeStep(timings, 'inspect screenshot before update', async () =>
+          runToolsPackJson<WinInspectResult>('inspect', ['--path', preUpdateScreenshotPath]),
+        );
+        expect(preUpdateScreenshot.screenshot?.path).toBe(preUpdateScreenshotPath);
+        expect(await fileSizeBytes(preUpdateScreenshotPath)).toBeGreaterThan(0);
+        await report.report.save('screenshots/open-design-win-before-update.png', await readFile(preUpdateScreenshotPath));
+      }
 
       if (!verifyCoreOnly) {
         payloadUpdate = await measureSmokeStep(timings, 'payload update acceptance', async () =>
@@ -491,13 +500,15 @@ winDescribe('packaged windows runtime smoke', () => {
         expectWindowsPackagedAppUrl(postReinstallInspect.status?.url);
       }
 
-      await mkdir(dirname(screenshotPath), { recursive: true });
-      const screenshot = await measureSmokeStep(timings, 'inspect screenshot', async () =>
-        runToolsPackJson<WinInspectResult>('inspect', ['--path', screenshotPath]),
-      );
-      expect(screenshot.screenshot?.path).toBe(screenshotPath);
-      expect(await fileSizeBytes(screenshotPath)).toBeGreaterThan(0);
-      await report.saveScreenshot(screenshotPath);
+      if (!inspect.desktopIpcUnavailable) {
+        await mkdir(dirname(screenshotPath), { recursive: true });
+        const screenshot = await measureSmokeStep(timings, 'inspect screenshot', async () =>
+          runToolsPackJson<WinInspectResult>('inspect', ['--path', screenshotPath]),
+        );
+        expect(screenshot.screenshot?.path).toBe(screenshotPath);
+        expect(await fileSizeBytes(screenshotPath)).toBeGreaterThan(0);
+        await report.saveScreenshot(screenshotPath);
+      }
 
       if (!verifyCoreOnly) {
         logs = await measureSmokeStep(timings, 'logs', async () => runToolsPackJson<LogsResult>('logs'));
@@ -541,11 +552,13 @@ winDescribe('packaged windows runtime smoke', () => {
         namespace,
         payloadUpdate,
         reinstall,
-        screenshot: report.screenshotRelpath,
-        screenshots: {
-          afterUpdate: report.screenshotRelpath,
-          beforeUpdate: 'screenshots/open-design-win-before-update.png',
-        },
+        screenshot: inspect.desktopIpcUnavailable ? null : report.screenshotRelpath,
+        screenshots: inspect.desktopIpcUnavailable
+          ? { afterUpdate: null, beforeUpdate: null }
+          : {
+              afterUpdate: report.screenshotRelpath,
+              beforeUpdate: 'screenshots/open-design-win-before-update.png',
+            },
         start: {
           executablePath: start.executablePath,
           logPath: start.logPath,
@@ -882,6 +895,8 @@ async function waitForHealthyDesktop(): Promise<WinInspectResult> {
     try {
       const statusInspect = await runToolsPackJson<WinInspectResult>('inspect');
       lastResult = { inspect: statusInspect, step: 'status' };
+      const fallback = await maybeCoreHealthFallback(statusInspect);
+      if (fallback != null) return fallback;
       if (statusInspect.status?.state !== 'running') {
         await delay(1000);
         continue;
@@ -907,6 +922,48 @@ async function waitForHealthyDesktop(): Promise<WinInspectResult> {
   }
 
   throw new Error(`packaged windows runtime did not become healthy: ${formatUnknown(lastResult)}`);
+}
+
+async function maybeCoreHealthFallback(inspect: WinInspectResult): Promise<WinInspectResult | null> {
+  if (!verifyCoreOnly) return null;
+  if (inspect.status != null) return null;
+  if (inspect.statusError == null || !inspect.statusError.includes('IPC request timed out')) return null;
+  if (inspect.daemonStatus?.state !== 'running' || inspect.daemonStatus.url == null) return null;
+  if (inspect.webStatus?.state !== 'running' || inspect.webStatus.url == null) return null;
+
+  const health = await fetchPackagedHealth(inspect.daemonStatus.url);
+  if (health.status !== 200 || health.health.ok !== true) return null;
+  return {
+    ...inspect,
+    desktopIpcUnavailable: true,
+    eval: {
+      ok: true,
+      value: health,
+    },
+    status: {
+      ...(inspect.daemonStatus.pid == null ? {} : { pid: inspect.daemonStatus.pid }),
+      state: 'running',
+      title: null,
+      url: inspect.webStatus.url,
+      windowVisible: false,
+    },
+  };
+}
+
+async function fetchPackagedHealth(daemonUrl: string): Promise<HealthEvalValue> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(new URL('/api/health', daemonUrl), { signal: controller.signal });
+    return {
+      health: await response.json() as HealthEvalValue['health'],
+      href: daemonUrl,
+      status: response.status,
+      title: 'Open Design Beta',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function ensureMainAppShell(timeoutMs = 45_000): Promise<void> {

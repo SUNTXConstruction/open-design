@@ -7,11 +7,13 @@ import {
   SIDECAR_MESSAGES,
   SIDECAR_MODES,
   SIDECAR_SOURCES,
+  type DaemonStatusSnapshot,
   type DesktopEvalResult,
   type DesktopScreenshotResult,
   type DesktopStatusSnapshot,
   type DesktopUpdateResult,
   type SidecarStamp,
+  type WebStatusSnapshot,
 } from "@open-design/sidecar-proto";
 import { createSidecarLaunchEnv, requestJsonIpc, resolveAppIpcPath } from "@open-design/sidecar";
 import {
@@ -65,6 +67,10 @@ function desktopStamp(config: ToolPackConfig): SidecarStamp {
     namespace: config.namespace,
     source: SIDECAR_SOURCES.TOOLS_PACK,
   };
+}
+
+function appIpcPath(config: ToolPackConfig, app: SidecarStamp["app"]): string {
+  return resolveAppIpcPath({ app, contract: OPEN_DESIGN_SIDECAR_CONTRACT, namespace: config.namespace });
 }
 
 function desktopLogPath(config: ToolPackConfig): string {
@@ -472,19 +478,30 @@ async function requestDesktopEval(
   }
 }
 
+async function requestStatusSnapshot<T>(ipc: string): Promise<{ error?: string; status: T | null }> {
+  try {
+    return { status: await requestJsonIpc<T>(ipc, { type: SIDECAR_MESSAGES.STATUS }, { timeoutMs: 2000 }) };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : String(error),
+      status: null,
+    };
+  }
+}
+
 export async function inspectPackedWinApp(config: ToolPackConfig, options: { expr?: string; path?: string; updateAction?: string }): Promise<WinInspectResult> {
   const stamp = desktopStamp(config);
-  let status: DesktopStatusSnapshot | null = null;
-  let statusError: string | undefined;
-  try {
-    status = await requestJsonIpc<DesktopStatusSnapshot>(stamp.ipc, { type: SIDECAR_MESSAGES.STATUS }, { timeoutMs: 2000 });
-  } catch (error) {
-    statusError = error instanceof Error ? error.message : String(error);
-  }
+  const [desktopSnapshot, daemonSnapshot, webSnapshot] = await Promise.all([
+    requestStatusSnapshot<DesktopStatusSnapshot>(stamp.ipc),
+    requestStatusSnapshot<DaemonStatusSnapshot>(appIpcPath(config, APP_KEYS.DAEMON)),
+    requestStatusSnapshot<WebStatusSnapshot>(appIpcPath(config, APP_KEYS.WEB)),
+  ]);
   const updateAction = resolveUpdateAction(options.updateAction);
   const launcher = await readToolPackLauncherRuntimeSnapshot(config);
   const updateCache = await readToolPackUpdateCacheLifecycleSnapshot(config);
   return {
+    daemonStatus: daemonSnapshot.status,
+    ...(daemonSnapshot.error == null ? {} : { daemonStatusError: daemonSnapshot.error }),
     ...(options.expr == null ? {} : {
       eval: await requestDesktopEval(stamp.ipc, options.expr),
     }),
@@ -514,7 +531,9 @@ export async function inspectPackedWinApp(config: ToolPackConfig, options: { exp
         { timeoutMs: UPDATE_ACTION_TIMEOUT_MS },
       ),
     }),
-    status,
-    ...(statusError == null ? {} : { statusError }),
+    status: desktopSnapshot.status,
+    ...(desktopSnapshot.error == null ? {} : { statusError: desktopSnapshot.error }),
+    webStatus: webSnapshot.status,
+    ...(webSnapshot.error == null ? {} : { webStatusError: webSnapshot.error }),
   };
 }
