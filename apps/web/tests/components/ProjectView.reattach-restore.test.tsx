@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ProjectView,
   computeProducedFiles,
+  computeTraceObjectFiles,
+  extractTouchedFilePathsFromEvents,
   findSameTurnHtmlWriteForRecoveredArtifact,
   mergeRecoveredArtifact,
 } from '../../src/components/ProjectView';
@@ -179,6 +181,34 @@ describe('computeProducedFiles', () => {
 
   it('returns undefined when no baseline is provided', () => {
     expect(computeProducedFiles(undefined, [] as never)).toBeUndefined();
+  });
+});
+
+describe('computeTraceObjectFiles', () => {
+  it('includes existing files touched by successful write tools', () => {
+    const before = ['existing.html'];
+    const next = [
+      { name: 'existing.html', path: 'existing.html', size: 10, mtime: 2, kind: 'html', mime: 'text/html' },
+      { name: 'new.pptx', path: 'new.pptx', size: 20, mtime: 3, kind: 'presentation', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
+    ];
+
+    const files = computeTraceObjectFiles(before, next as never, ['existing.html']);
+
+    expect(files?.map((file) => [file.name, file.traceObjectReason])).toEqual([
+      ['new.pptx', 'new'],
+      ['existing.html', 'modified'],
+    ]);
+  });
+
+  it('recovers successful write paths from persisted tool events', () => {
+    const touched = extractTouchedFilePathsFromEvents([
+      { kind: 'tool_use', id: 'tool-1', name: 'Edit', input: { file_path: 'existing.html' } },
+      { kind: 'tool_result', toolUseId: 'tool-1', isError: false },
+      { kind: 'tool_use', id: 'tool-2', name: 'Write', input: { file_path: 'failed.html' } },
+      { kind: 'tool_result', toolUseId: 'tool-2', isError: true },
+    ] as never);
+
+    expect(touched).toEqual(['existing.html']);
   });
 });
 
