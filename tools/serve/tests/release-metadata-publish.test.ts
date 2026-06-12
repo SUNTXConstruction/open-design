@@ -117,7 +117,7 @@ describe("shared release metadata publisher", () => {
           WIN_X64_RESULT: "success",
           ...(channel === "beta" ? { RELEASE_LATEST_CAS_REQUIRED: "true" } : {}),
         };
-        await runNode(["--experimental-strip-types", ".github/workflow/scripts/release/storage/publish-metadata.ts"], {
+        await runNode(["--experimental-strip-types", "tools/release/src/storage/publish-metadata.ts"], {
           cwd: repoRoot,
           env,
         });

@@ -61,6 +61,11 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+function log(message: string): void {
+  const prefix = process.env.OPEN_DESIGN_RELEASE_CHANNEL === "prerelease" ? "release-prerelease" : "release-stable";
+  console.log(`[${prefix}] ${message}`);
+}
+
 async function execGh(args: string[]): Promise<{ stdout: string }> {
   const nodeScript = process.env.OPEN_DESIGN_GH_NODE_SCRIPT;
   if (nodeScript != null && nodeScript.length > 0) {
@@ -213,8 +218,8 @@ function parsePrereleaseVersion(value: string, sourceName: string): ParsedPrerel
 
 function parsePrereleaseMetadataJson(value: string): ParsedPrereleaseMetadata {
   const record = parseJsonRecord(value, "R2 prerelease metadata.json");
-  const prereleaseVersion = readStringField(record, "prereleaseVersion");
-  const prereleaseNumber = readNumberField(record, "prereleaseNumber");
+  const prereleaseVersion = readStringField(record, "releaseVersion") ?? readStringField(record, "prereleaseVersion");
+  const prereleaseNumber = readNumberField(record, "releaseNumber") ?? readNumberField(record, "prereleaseNumber");
   const baseVersion = readStringField(record, "baseVersion");
 
   if (prereleaseVersion != null) {
@@ -226,14 +231,14 @@ function parsePrereleaseMetadataJson(value: string): ParsedPrereleaseMetadata {
     }
     if (prereleaseNumber != null && prereleaseNumber !== prerelease.prereleaseNumber) {
       fail(
-        `R2 prerelease metadata.json prereleaseNumber ${prereleaseNumber} does not match prereleaseVersion ${prerelease.prereleaseVersion}`,
+        `R2 prerelease metadata.json releaseNumber ${prereleaseNumber} does not match releaseVersion ${prerelease.prereleaseVersion}`,
       );
     }
     return { ...prerelease, source: "metadata-json" };
   }
 
   if (baseVersion == null || prereleaseNumber == null) {
-    fail("R2 prerelease metadata.json must include prereleaseVersion or baseVersion+prereleaseNumber");
+    fail("R2 prerelease metadata.json must include releaseVersion or baseVersion+releaseNumber");
   }
 
   const parsedBase = parseReleaseBaseVersion(baseVersion);
@@ -333,13 +338,12 @@ async function validateStablePrereleaseMetadata(options: {
   const parsedPrerelease = parsePrereleaseMetadataJson(metadataJson);
   if (parsedPrerelease.prereleaseVersion !== prerelease.prereleaseVersion) {
     fail(
-      `${sourceName}.prereleaseVersion must be ${prerelease.prereleaseVersion}; got ${parsedPrerelease.prereleaseVersion}`,
+      `${sourceName}.releaseVersion must be ${prerelease.prereleaseVersion}; got ${parsedPrerelease.prereleaseVersion}`,
     );
   }
 
   expectStringField(metadata, "channel", "prerelease", sourceName);
   expectStringField(metadata, "releaseVersion", prerelease.prereleaseVersion, sourceName);
-  expectStringField(metadata, "prereleaseVersion", prerelease.prereleaseVersion, sourceName);
   expectStringField(metadata, "baseVersion", options.packagedVersion, sourceName);
   expectBooleanField(metadata, "signed", true, sourceName);
 
@@ -347,7 +351,7 @@ async function validateStablePrereleaseMetadata(options: {
   expectStringField(github, "branch", options.branch, `${sourceName}.github`);
   expectStringField(github, "commit", options.commit, `${sourceName}.github`);
   expectStringField(github, "repository", options.repository, `${sourceName}.github`);
-  expectStringField(github, "workflow", "release-stable", `${sourceName}.github`);
+  expectStringField(github, "workflow", "release-prerelease", `${sourceName}.github`);
 
   const r2 = requireObjectField(metadata, "r2", sourceName);
   expectStringField(r2, "versionPrefix", expectedVersionPrefix, `${sourceName}.r2`);
@@ -559,10 +563,10 @@ if (channel === "prerelease") {
       prereleaseVersion: `${packagedVersion}-prerelease.0`,
     };
     stateSource = "missing R2 metadata.json fallback prerelease.0";
-    console.log("[release-stable] R2 prerelease metadata.json: not found; using prerelease.0 fallback");
+    log("R2 prerelease metadata.json: not found; using prerelease.0 fallback");
   } else {
     latestPrerelease = parsePrereleaseMetadataJson(latestMetadataJson);
-    console.log(`[release-stable] R2 prerelease metadata.json version: ${latestPrerelease.prereleaseVersion}`);
+    log(`R2 prerelease metadata.json version: ${latestPrerelease.prereleaseVersion}`);
   }
 
   const existingBase = parseReleaseBaseVersion(latestPrerelease.baseVersion);
@@ -581,7 +585,7 @@ if (channel === "prerelease") {
   prereleaseNumber = String(nextPrereleaseNumber);
   releaseVersion = formatReleaseVersion("prerelease", packagedVersion, nextPrereleaseNumber);
   releaseName = `Open Design Prerelease ${releaseVersion}`;
-  console.log(`[release-stable] latest prerelease: ${latestPrerelease.prereleaseVersion}`);
+  log(`latest prerelease: ${latestPrerelease.prereleaseVersion}`);
 } else {
   const stablePrerelease = await validateStablePrereleaseMetadata({
     branch: `release/v${stableBaseVersion.value}`,
@@ -592,18 +596,18 @@ if (channel === "prerelease") {
     repository,
   });
   stateSource = `R2 prerelease metadata ${stablePrerelease.prereleaseVersion}`;
-  console.log(`[release-stable] validated prerelease: ${stablePrerelease.prereleaseVersion}`);
-  console.log(`[release-stable] validated prerelease metadata: ${stablePrerelease.metadataUrl}`);
+  log(`validated prerelease: ${stablePrerelease.prereleaseVersion}`);
+  log(`validated prerelease metadata: ${stablePrerelease.metadataUrl}`);
 }
 
-console.log(`[release-stable] channel: ${channel}`);
-console.log(`[release-stable] base version: ${packagedVersion}`);
-console.log(`[release-stable] release version: ${releaseVersion}`);
-console.log(`[release-stable] namespace: ${namespaces.mac}`);
-console.log(`[release-stable] dry run: ${String(dryRun)}`);
-if (channel === "stable") console.log(`[release-stable] version tag: ${versionTag}`);
-console.log(`[release-stable] state source: ${stateSource}`);
-if (latestStable != null) console.log(`[release-stable] previous stable: ${latestStable.value}`);
+log(`channel: ${channel}`);
+log(`base version: ${packagedVersion}`);
+log(`release version: ${releaseVersion}`);
+log(`namespace: ${namespaces.mac}`);
+log(`dry run: ${String(dryRun)}`);
+if (channel === "stable") log(`version tag: ${versionTag}`);
+log(`state source: ${stateSource}`);
+if (latestStable != null) log(`previous stable: ${latestStable.value}`);
 
 setOutput("base_version", packagedVersion);
 setOutput("branch", branch);
@@ -616,6 +620,7 @@ setOutput("mac_intel_namespace", namespaces.macIntel);
 setOutput("namespace", namespaces.mac);
 setOutput("prerelease_number", prereleaseNumber);
 setOutput("previous_stable", latestStable?.value ?? "");
+setOutput("release_number", prereleaseNumber);
 setOutput("release_name", releaseName);
 setOutput("release_version", releaseVersion);
 setOutput("stable_version", packagedVersion);

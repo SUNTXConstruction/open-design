@@ -13,8 +13,10 @@ import { assertCurrentVersionReservation, versionLockObjectKey } from "./beta-ve
 import { getStorageObject, putStorageObject, putStorageObjectWithStatus } from "./s3-upload.ts";
 import {
   parseCountedReleaseVersion,
+  parseReleaseBaseVersion,
   releaseChannelDescriptor,
   releaseMetadataVersionFields,
+  type CountedReleaseChannel,
 } from "@open-design/release";
 
 type PlatformManifest = {
@@ -89,29 +91,27 @@ function releaseMetadataFields(): Record<string, unknown> {
   };
 }
 
-function parseBetaReleaseVersion(value: string): { base: [number, number, number]; betaNumber: number } | null {
-  const parsed = parseCountedReleaseVersion(value, "beta");
+function parseCountedVersionForChannel(value: string, channel: CountedReleaseChannel): { base: [number, number, number]; releaseNumber: number } | null {
+  const parsed = parseCountedReleaseVersion(value, channel);
   if (parsed == null) return null;
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(parsed.baseVersion);
-  if (match?.[1] == null || match[2] == null || match[3] == null) return null;
-  const base: [number, number, number] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  const betaNumber = parsed.number;
-  if (base.some((part) => !Number.isSafeInteger(part)) || !Number.isSafeInteger(betaNumber) || betaNumber < 1) return null;
-  return { base, betaNumber };
+  const base = parseReleaseBaseVersion(parsed.baseVersion);
+  if (base == null) return null;
+  return { base: [...base], releaseNumber: parsed.number };
 }
 
 function compareReleaseVersions(left: string, right: string): number {
-  const parsedLeft = parseBetaReleaseVersion(left);
-  const parsedRight = parseBetaReleaseVersion(right);
+  if (releaseChannel === "stable") throw new Error("stable latest CAS does not compare counted release versions");
+  const parsedLeft = parseCountedVersionForChannel(left, releaseChannel);
+  const parsedRight = parseCountedVersionForChannel(right, releaseChannel);
   if (parsedLeft == null || parsedRight == null) {
-    throw new Error(`invalid beta version comparison: ${left} vs ${right}`);
+    throw new Error(`invalid ${releaseChannel} version comparison: ${left} vs ${right}`);
   }
   for (let index = 0; index < parsedLeft.base.length; index += 1) {
     if (parsedLeft.base[index] > parsedRight.base[index]) return 1;
     if (parsedLeft.base[index] < parsedRight.base[index]) return -1;
   }
-  if (parsedLeft.betaNumber > parsedRight.betaNumber) return 1;
-  if (parsedLeft.betaNumber < parsedRight.betaNumber) return -1;
+  if (parsedLeft.releaseNumber > parsedRight.releaseNumber) return 1;
+  if (parsedLeft.releaseNumber < parsedRight.releaseNumber) return -1;
   return 0;
 }
 
@@ -131,11 +131,11 @@ async function uploadLatestMetadataWithCas(path: string, objectKey: string): Pro
     return;
   }
 
-  if (releaseChannel !== "beta") {
-    throw new Error("latest metadata CAS is only supported for beta releases");
+  if (releaseChannel === "stable") {
+    throw new Error("latest metadata CAS is only supported for counted releases");
   }
-  if (parseBetaReleaseVersion(releaseVersion) == null) {
-    throw new Error(`invalid beta version for latest CAS: ${releaseVersion}`);
+  if (parseCountedVersionForChannel(releaseVersion, releaseChannel) == null) {
+    throw new Error(`invalid ${releaseChannel} version for latest CAS: ${releaseVersion}`);
   }
 
   for (let attempt = 1; attempt <= 5; attempt += 1) {
@@ -144,15 +144,15 @@ async function uploadLatestMetadataWithCas(path: string, objectKey: string): Pro
     if (latest == null) {
       headers["if-none-match"] = "*";
     } else {
-      let latestBetaVersion = "";
+      let latestReleaseVersion = "";
       try {
-        const parsed = JSON.parse(latest.text.replace(/^\uFEFF/u, "")) as { betaVersion?: unknown };
-        latestBetaVersion = typeof parsed.betaVersion === "string" ? parsed.betaVersion : "";
+        const parsed = JSON.parse(latest.text.replace(/^\uFEFF/u, "")) as { releaseVersion?: unknown };
+        latestReleaseVersion = typeof parsed.releaseVersion === "string" ? parsed.releaseVersion : "";
       } catch (error) {
         throw new Error(`latest metadata is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
       }
-      if (latestBetaVersion.length > 0 && compareReleaseVersions(latestBetaVersion, releaseVersion) > 0) {
-        throw new Error(`refusing to move beta latest backward from ${latestBetaVersion} to ${releaseVersion}`);
+      if (latestReleaseVersion.length > 0 && compareReleaseVersions(latestReleaseVersion, releaseVersion) > 0) {
+        throw new Error(`refusing to move ${releaseChannel} latest backward from ${latestReleaseVersion} to ${releaseVersion}`);
       }
       if (latest.etag.length === 0) {
         throw new Error("latest metadata GET did not return an ETag for CAS update");

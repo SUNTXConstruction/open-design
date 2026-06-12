@@ -19,6 +19,7 @@ const previewReleaseBranchPattern = /^preview\/v(\d+\.\d+\.\d+)$/;
 
 type ParsedStableVersion = {
   parsed: ReleaseBaseVersionTuple;
+  source?: string;
   value: string;
 };
 
@@ -43,6 +44,45 @@ function extractStableVersionFromTag(tag: string): ParsedStableVersion | null {
 
   const parsed = parseReleaseBaseVersion(match[1]);
   return parsed == null ? null : { parsed, value: match[1] };
+}
+
+function parsePreviewBaseVersionInput(value: string | undefined, sourceName: string): ParsedStableVersion | null {
+  const trimmed = value?.trim() ?? "";
+  if (trimmed.length === 0) return null;
+
+  const parsed = parseReleaseBaseVersion(trimmed);
+  if (parsed == null) {
+    fail(`${sourceName} must be a stable x.y.z version; got ${trimmed}`);
+  }
+
+  return { parsed, source: sourceName, value: trimmed };
+}
+
+function resolvePreviewBaseVersion(branch: string, inputValue: string | undefined, packagedVersion: string): ParsedStableVersion {
+  const branchMatch = previewReleaseBranchPattern.exec(branch);
+  const branchVersion =
+    branchMatch?.[1] == null
+      ? null
+      : ({
+          parsed: parseReleaseBaseVersion(branchMatch[1]) ?? fail(`invalid preview branch version: ${branchMatch[1]}`),
+          source: "GITHUB_REF_NAME",
+          value: branchMatch[1],
+        } satisfies ParsedStableVersion);
+  const inputVersion = parsePreviewBaseVersionInput(inputValue, "OPEN_DESIGN_PREVIEW_VERSION");
+
+  if (branchVersion != null) {
+    if (inputVersion != null && inputVersion.value !== branchVersion.value) {
+      fail(
+        `OPEN_DESIGN_PREVIEW_VERSION ${inputVersion.value} must match preview branch version ${branchVersion.value} when both are provided`,
+      );
+    }
+    return branchVersion;
+  }
+
+  if (inputVersion != null) return inputVersion;
+
+  const packagedParsed = parseReleaseBaseVersion(packagedVersion) ?? fail(`invalid packaged version: ${packagedVersion}`);
+  return { parsed: packagedParsed, source: "apps/packaged/package.json", value: packagedVersion };
 }
 
 function parsePreviewParts(baseVersion: string, previewNumber: string): ParsedPreviewVersion {
@@ -93,8 +133,8 @@ function parsePreviewMetadataJson(value: string): ParsedPreviewMetadata {
   }
 
   const record = parsed as Record<string, unknown>;
-  const previewVersion = readStringField(record, "previewVersion") ?? readStringField(record, "releaseVersion");
-  const previewNumber = readNumberField(record, "previewNumber");
+  const previewVersion = readStringField(record, "releaseVersion") ?? readStringField(record, "previewVersion");
+  const previewNumber = readNumberField(record, "releaseNumber") ?? readNumberField(record, "previewNumber");
   const baseVersion = readStringField(record, "baseVersion");
 
   if (previewVersion != null) {
@@ -103,13 +143,13 @@ function parsePreviewMetadataJson(value: string): ParsedPreviewMetadata {
       fail(`R2 preview metadata.json baseVersion ${baseVersion} does not match previewVersion ${preview.previewVersion}`);
     }
     if (previewNumber != null && previewNumber !== preview.previewNumber) {
-      fail(`R2 preview metadata.json previewNumber ${previewNumber} does not match previewVersion ${preview.previewVersion}`);
+      fail(`R2 preview metadata.json releaseNumber ${previewNumber} does not match releaseVersion ${preview.previewVersion}`);
     }
     return { ...preview, source: "metadata-json" };
   }
 
   if (baseVersion == null || previewNumber == null) {
-    fail("R2 preview metadata.json must include previewVersion or baseVersion+previewNumber");
+    fail("R2 preview metadata.json must include releaseVersion or baseVersion+releaseNumber");
   }
 
   const parsedBase = parseReleaseBaseVersion(baseVersion);
@@ -221,15 +261,13 @@ function setOutput(name: string, value: string): void {
 }
 
 const packagedVersion = await readPackagedVersion();
-const packagedParsed = parseReleaseBaseVersion(packagedVersion) ?? fail(`invalid packaged version: ${packagedVersion}`);
 const branch = process.env.GITHUB_REF_NAME ?? "";
-const branchMatch = previewReleaseBranchPattern.exec(branch);
-if (branchMatch?.[1] == null) {
-  fail(`release-preview can only run from preview/vX.Y.Z branches; got ${branch || "(empty)"}`);
-}
-const branchVersion = branchMatch[1];
-if (branchVersion !== packagedVersion) {
-  fail(`preview branch version ${branchVersion} must match apps/packaged/package.json version ${packagedVersion}`);
+const previewBaseVersion = resolvePreviewBaseVersion(branch, process.env.OPEN_DESIGN_PREVIEW_VERSION, packagedVersion);
+const packagedParsed = previewBaseVersion.parsed;
+if (previewBaseVersion.value !== packagedVersion) {
+  fail(
+    `${previewBaseVersion.source ?? "preview base"} version ${previewBaseVersion.value} must match apps/packaged/package.json version ${packagedVersion}`,
+  );
 }
 
 const tags = await fetchGitTags("open-design-v*");
@@ -307,6 +345,7 @@ setOutput("github_release_enabled", "false");
 setOutput("latest_stable", latestStable?.value ?? "");
 setOutput("preview_number", String(previewNumber));
 setOutput("preview_version", previewVersion);
+setOutput("release_number", String(previewNumber));
 setOutput("release_name", releaseName);
 setOutput("release_version", previewVersion);
 setOutput("state_source", stateSource);

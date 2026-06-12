@@ -16,16 +16,18 @@ function countOccurrences(content: string, needle: string): number {
 
 describe("release workflows", () => {
   it("requires Vela CLI only for beta mac arm64 packaging", async () => {
-    const [beta, betaSelfHosted, preview, stable, buildMac, buildWin, prepareMac, prepareWin, publishPlatform, winLifecycle, desktopUpdater, macBuild, macFs, installUnsafeDmg, winApp, macWorkspace, linuxPack] = await Promise.all([
+    const [beta, betaSelfHosted, preview, prerelease, stable, stablePrepare, buildMac, buildWin, prepareMac, prepareWin, publishPlatform, winLifecycle, desktopUpdater, macBuild, macFs, installUnsafeDmg, winApp, macWorkspace, linuxPack] = await Promise.all([
       readFile(new URL("../../../.github/workflows/release-beta.yml", import.meta.url), "utf8"),
       readFile(new URL("../../../.github/workflows/release-beta-s.yml", import.meta.url), "utf8"),
       readFile(new URL("../../../.github/workflows/release-preview.yml", import.meta.url), "utf8"),
+      readFile(new URL("../../../.github/workflows/release-prerelease.yml", import.meta.url), "utf8"),
       readFile(new URL("../../../.github/workflows/release-stable.yml", import.meta.url), "utf8"),
-      readFile(new URL("../../../.github/workflow/scripts/release/build-platform.sh", import.meta.url), "utf8"),
-      readFile(new URL("../../../.github/workflow/scripts/release/build-platform.ps1", import.meta.url), "utf8"),
-      readFile(new URL("../../../.github/workflow/scripts/release/prepare-platform-assets.sh", import.meta.url), "utf8"),
-      readFile(new URL("../../../.github/workflow/scripts/release/prepare-platform-assets.ps1", import.meta.url), "utf8"),
-      readFile(new URL("../../../.github/workflow/scripts/release/storage/publish-platform.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../../tools/release/src/metadata/prepare-stable.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../../tools/release/scripts/build-platform.sh", import.meta.url), "utf8"),
+      readFile(new URL("../../../tools/release/scripts/build-platform.ps1", import.meta.url), "utf8"),
+      readFile(new URL("../../../tools/release/scripts/prepare-platform-assets.sh", import.meta.url), "utf8"),
+      readFile(new URL("../../../tools/release/scripts/prepare-platform-assets.ps1", import.meta.url), "utf8"),
+      readFile(new URL("../../../tools/release/src/storage/publish-platform.ts", import.meta.url), "utf8"),
       readFile(new URL("../src/win/lifecycle.ts", import.meta.url), "utf8"),
       readFile(new URL("../../../apps/desktop/src/main/updater.ts", import.meta.url), "utf8"),
       readFile(new URL("../src/mac/build.ts", import.meta.url), "utf8"),
@@ -42,8 +44,8 @@ describe("release workflows", () => {
     const selfHostedMac = sectionBetween(betaSelfHosted, "  build_mac_arm64:", "  build_win_x64:");
     const selfHostedWin = sectionBetween(betaSelfHosted, "  build_win_x64:", "  publish:");
 
-    expect(mac).toContain("bash .github/workflow/scripts/release/build-platform.sh");
-    expect(selfHostedMac).toContain("fnm exec --using=24 -- bash .github/workflow/scripts/release/build-platform.sh");
+    expect(mac).toContain("bash tools/release/scripts/build-platform.sh");
+    expect(selfHostedMac).toContain("fnm exec --using=24 -- bash tools/release/scripts/build-platform.sh");
     expect(mac).toContain("REQUIRE_VELA_CLI: \"true\"");
     expect(selfHostedMac).toContain("REQUIRE_VELA_CLI: \"true\"");
     expect(mac.match(/RELEASE_ARTIFACT_MODE: dmg-and-payload/g)?.length ?? 0).toBe(2);
@@ -68,9 +70,9 @@ describe("release workflows", () => {
     expect(beta).not.toContain("publish-beta-metadata.ts");
     expect(beta).not.toContain("verify-beta-metadata.ts");
     expect(beta).not.toContain("summary-beta.ts");
-    expect(beta).toContain("publish-metadata.ts");
-    expect(beta).toContain("verify-metadata.ts");
-    expect(beta).toContain("summary-metadata.ts");
+    expect(beta).toContain("tools-release publish-metadata");
+    expect(beta).toContain("tools-release verify-metadata");
+    expect(beta).toContain("tools-release summary-metadata");
     expect(betaSelfHosted).toContain("mac_arm64_update_metadata_url:");
     expect(betaSelfHosted).toContain("mac_arm64_delivery_mode:");
     expect(betaSelfHosted).toContain('default: "https://s3.nexu.space/od-releases"');
@@ -78,7 +80,7 @@ describe("release workflows", () => {
     expect(betaSelfHosted).toContain("public-notarized");
     expect(selfHostedMac).toContain("RELEASE_DELIVERY_MODE: ${{ inputs.mac_arm64_delivery_mode }}");
     expect(selfHostedMac).toContain("RELEASE_SIGN_MODE: ${{ inputs.mac_arm64_delivery_mode == 'internal-updater' && 'sign-only' || inputs.mac_arm64_sign_mode }}");
-    expect(selfHostedMac).toContain("OD_UPDATE_METADATA_URL: ${{ inputs.release_public_origin }}/beta/latest/metadata.json");
+    expect(selfHostedMac).toContain("OD_UPDATE_METADATA_URL: ${{ inputs.release_public_origin }}/betas/latest/metadata.json");
     expect(betaSelfHosted).toContain("public-notarized mac_arm64_delivery_mode requires mac_arm64_sign_mode=notarize");
     expect(betaSelfHosted).toContain("RELEASE_SIGNED: ${{ inputs.enable_mac_arm64 && (inputs.mac_arm64_delivery_mode == 'internal-updater' || inputs.mac_arm64_sign_mode != 'no') && 'true' || 'false' }}");
     expect(selfHostedMac).toContain("OD_PACKAGED_E2E_MAC_UPDATE_METADATA_URL: ${{ inputs.mac_arm64_update_metadata_url }}");
@@ -94,11 +96,11 @@ describe("release workflows", () => {
     expect(betaSelfHosted).not.toContain("publish-beta-metadata.ts");
     expect(betaSelfHosted).not.toContain("verify-beta-metadata.ts");
     expect(betaSelfHosted).not.toContain("summary-beta.ts");
-    expect(betaSelfHosted).toContain("publish-metadata.ts");
-    expect(betaSelfHosted).toContain("verify-metadata.ts");
-    expect(betaSelfHosted).toContain("summary-metadata.ts");
+    expect(betaSelfHosted).toContain("tools-release publish-metadata");
+    expect(betaSelfHosted).toContain("tools-release verify-metadata");
+    expect(betaSelfHosted).toContain("tools-release summary-metadata");
     expect(win).toContain("-IncludeZip $${{ inputs.win_x64_target == 'all' || inputs.win_x64_target == 'zip' }}");
-    expect(selfHostedWin).toContain("OD_UPDATE_METADATA_URL: ${{ inputs.release_public_origin }}/beta/latest/metadata.json");
+    expect(selfHostedWin).toContain("OD_UPDATE_METADATA_URL: ${{ inputs.release_public_origin }}/betas/latest/metadata.json");
     expect(selfHostedWin).toContain("-IncludeZip $${{ inputs.win_x64_target == 'all' || inputs.win_x64_target == 'zip' }}");
     expect(prepareMac).not.toContain("required RELEASE_ASSET_SUFFIX");
     expect(prepareMac).toContain('RELEASE_ASSET_SUFFIX="${RELEASE_ASSET_SUFFIX:-}"');
@@ -132,15 +134,33 @@ describe("release workflows", () => {
     expect(preview).not.toContain(".github/scripts/release/r2/publish.sh");
     expect(preview).not.toContain(".github/scripts/release/r2/verify.sh");
     expect(preview).not.toContain(".github/scripts/release/r2/summary.sh");
-    expect(countOccurrences(preview, ".github/workflow/scripts/release/prepare-platform-assets.sh")).toBeGreaterThanOrEqual(3);
-    expect(preview).toContain(".github\\workflow\\scripts\\release\\prepare-platform-assets.ps1");
-    expect(countOccurrences(preview, ".github/workflow/scripts/release/storage/publish-platform.ts")).toBeGreaterThanOrEqual(4);
-    expect(preview).toContain(".github/workflow/scripts/release/storage/publish-metadata.ts");
-    expect(preview).toContain(".github/workflow/scripts/release/storage/verify-metadata.ts");
-    expect(preview).toContain(".github/workflow/scripts/release/storage/summary-metadata.ts");
+    expect(countOccurrences(preview, "tools/release/scripts/prepare-platform-assets.sh")).toBeGreaterThanOrEqual(3);
+    expect(preview).toContain("tools\\release\\scripts\\prepare-platform-assets.ps1");
+    expect(countOccurrences(preview, "tools-release publish-platform")).toBeGreaterThanOrEqual(4);
+    expect(preview).toContain("tools-release publish-metadata");
+    expect(preview).toContain("tools-release verify-metadata");
+    expect(preview).toContain("tools-release summary-metadata");
     expect(preview).toContain("RELEASE_ARTIFACT_MODE: all");
     expect(preview).toContain("open-design-preview-mac-arm64-publish-manifest");
     expect(preview).toContain("open-design-preview-win-x64-publish-manifest");
+    expect(preview).toContain("workflow_call:");
+    expect(preview).toContain("OPEN_DESIGN_PREVIEW_VERSION: ${{ inputs.release_version }}");
+    expect(preview).toContain("GITHUB_SHA: ${{ needs.metadata.outputs.commit }}");
+    expect(preview).toContain("previous_commit: ${{ steps.prev.outputs.previous_commit }}");
+    expect(preview).toContain("version_metadata_url: ${{ steps.outputs.outputs.version_metadata_url }}");
+    expect(prerelease).toContain("name: release-prerelease");
+    expect(prerelease).toContain("pnpm exec tools-release prepare prerelease");
+    expect(prerelease).toContain("OPEN_DESIGN_PRERELEASE_METADATA_URL");
+    expect(prerelease).toContain("RELEASE_CHANNEL: prerelease");
+    expect(prerelease).toContain("open-design-prerelease-mac-arm64-publish-manifest");
+    expect(prerelease).toContain("open-design-prerelease-win-x64-publish-manifest");
+    expect(prerelease).toContain("workflow_call:");
+    expect(prerelease).toContain("OPEN_DESIGN_STABLE_VERSION: ${{ inputs.release_version }}");
+    expect(prerelease).toContain("GITHUB_SHA: ${{ needs.metadata.outputs.commit }}");
+    expect(prerelease).toContain("previous_commit: ${{ steps.prev.outputs.previous_commit }}");
+    expect(prerelease).toContain("version_metadata_url: ${{ steps.outputs.outputs.version_metadata_url }}");
+    expect(prerelease).not.toContain("RELEASE_CHANNEL: Prerelease");
+    expect(prerelease).not.toContain("tools-release prepare preview");
     expect(stable).not.toContain(".github/scripts/release/assets/mac.sh");
     expect(stable).not.toContain(".github/scripts/release/assets/mac-intel.sh");
     expect(stable).not.toContain(".github/scripts/release/assets/win.ps1");
@@ -148,15 +168,21 @@ describe("release workflows", () => {
     expect(stable).not.toContain(".github/scripts/release/r2/publish.sh");
     expect(stable).not.toContain(".github/scripts/release/r2/verify.sh");
     expect(stable).not.toContain(".github/scripts/release/r2/summary.sh");
-    expect(countOccurrences(stable, ".github/workflow/scripts/release/prepare-platform-assets.sh")).toBeGreaterThanOrEqual(3);
-    expect(stable).toContain(".github\\workflow\\scripts\\release\\prepare-platform-assets.ps1");
-    expect(countOccurrences(stable, ".github/workflow/scripts/release/storage/publish-platform.ts")).toBeGreaterThanOrEqual(4);
-    expect(stable).toContain(".github/workflow/scripts/release/storage/publish-metadata.ts");
-    expect(stable).toContain(".github/workflow/scripts/release/storage/verify-metadata.ts");
-    expect(stable).toContain(".github/workflow/scripts/release/storage/summary-metadata.ts");
+    expect(countOccurrences(stable, "tools/release/scripts/prepare-platform-assets.sh")).toBeGreaterThanOrEqual(3);
+    expect(stable).toContain("tools\\release\\scripts\\prepare-platform-assets.ps1");
+    expect(countOccurrences(stable, "tools-release publish-platform")).toBeGreaterThanOrEqual(4);
+    expect(stable).toContain("tools-release publish-metadata");
+    expect(stable).toContain("tools-release verify-metadata");
+    expect(stable).toContain("tools-release summary-metadata");
     expect(stable).toContain("open-design-release-mac-arm64-publish-manifest");
     expect(stable).toContain("open-design-release-win-x64-publish-manifest");
-    expect(stable).toContain("--signed\n            --notarize");
-    expect(stable).toContain("--signed \\\n            --notarize");
+    expect(stable).toContain("--signed");
+    expect(stable).toContain("--notarize");
+    expect(stable).toContain("run: pnpm exec tools-release prepare stable");
+    expect(stable).toContain("OPEN_DESIGN_RELEASE_CHANNEL: stable");
+    expect(stable).toContain("default: true");
+    expect(stable).not.toContain("inputs.channel");
+    expect(stable).not.toContain("prepare ${{ inputs.channel }}");
+    expect(stablePrepare).toContain('expectStringField(github, "workflow", "release-prerelease"');
   });
 });

@@ -21,18 +21,18 @@ type ParsedStableVersion = {
   value: string;
 };
 
-type ParsedBetaVersion = {
+type ParsedBetasVersion = {
   baseVersion: string;
-  betaNumber: number;
-  betaVersion: string;
+  releaseNumber: number;
+  releaseVersion: string;
 };
 
-type ParsedBetaMetadata = ParsedBetaVersion & {
+type ParsedBetasMetadata = ParsedBetasVersion & {
   source: "metadata-json";
 };
 
 function fail(message: string): never {
-  console.error(`[release-beta] ${message}`);
+  console.error(`[release-betas] ${message}`);
   process.exit(1);
 }
 
@@ -44,16 +44,16 @@ function extractStableVersionFromTag(tag: string): ParsedStableVersion | null {
   return parsed == null ? null : { parsed, value: match[1] };
 }
 
-function parseBetaParts(baseVersion: string, betaNumber: string): ParsedBetaVersion {
-  const parsedBetaNumber = Number(betaNumber);
-  if (!Number.isSafeInteger(parsedBetaNumber) || parsedBetaNumber < 1) {
-    fail(`invalid beta number in latest beta metadata: ${betaNumber}`);
+function parseBetasParts(baseVersion: string, betasNumber: string): ParsedBetasVersion {
+  const parsedBetasNumber = Number(betasNumber);
+  if (!Number.isSafeInteger(parsedBetasNumber) || parsedBetasNumber < 1) {
+    fail(`invalid betas number in latest betas metadata: ${betasNumber}`);
   }
 
   return {
     baseVersion,
-    betaNumber: parsedBetaNumber,
-    betaVersion: formatReleaseVersion("beta", baseVersion, parsedBetaNumber),
+    releaseNumber: parsedBetasNumber,
+    releaseVersion: formatReleaseVersion("betas", baseVersion, parsedBetasNumber),
   };
 }
 
@@ -67,56 +67,56 @@ function readNumberField(record: Record<string, unknown>, field: string): number
   return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
 }
 
-function parseBetaVersion(value: string, sourceName: string): ParsedBetaVersion {
-  const parsed = parseCountedReleaseVersion(value, "beta");
+function parseBetasVersion(value: string, sourceName: string): ParsedBetasVersion {
+  const parsed = parseCountedReleaseVersion(value, "betas");
   if (parsed == null) {
-    fail(`${sourceName} betaVersion must be x.y.z-beta.N; got ${value}`);
+    fail(`${sourceName} releaseVersion must be x.y.z-betas.N; got ${value}`);
   }
   return {
     baseVersion: parsed.baseVersion,
-    betaNumber: parsed.number,
-    betaVersion: parsed.releaseVersion,
+    releaseNumber: parsed.number,
+    releaseVersion: parsed.releaseVersion,
   };
 }
 
-function parseBetaMetadataJson(value: string): ParsedBetaMetadata {
+function parseBetasMetadataJson(value: string): ParsedBetasMetadata {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value.replace(/^\uFEFF/u, ""));
   } catch (error) {
-    fail(`beta metadata.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    fail(`betas metadata.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) {
-    fail("beta metadata.json must be a JSON object");
+    fail("betas metadata.json must be a JSON object");
   }
 
   const record = parsed as Record<string, unknown>;
-  const betaVersion = readStringField(record, "betaVersion");
-  const betaNumber = readNumberField(record, "betaNumber");
+  const releaseVersion = readStringField(record, "releaseVersion");
+  const releaseNumber = readNumberField(record, "releaseNumber");
   const baseVersion = readStringField(record, "baseVersion");
 
-  if (betaVersion != null) {
-    const beta = parseBetaVersion(betaVersion, "beta metadata.json");
-    if (baseVersion != null && baseVersion !== beta.baseVersion) {
-      fail(`beta metadata.json baseVersion ${baseVersion} does not match betaVersion ${beta.betaVersion}`);
+  if (releaseVersion != null) {
+    const betas = parseBetasVersion(releaseVersion, "betas metadata.json");
+    if (baseVersion != null && baseVersion !== betas.baseVersion) {
+      fail(`betas metadata.json baseVersion ${baseVersion} does not match releaseVersion ${betas.releaseVersion}`);
     }
-    if (betaNumber != null && betaNumber !== beta.betaNumber) {
-      fail(`beta metadata.json betaNumber ${betaNumber} does not match betaVersion ${beta.betaVersion}`);
+    if (releaseNumber != null && releaseNumber !== betas.releaseNumber) {
+      fail(`betas metadata.json releaseNumber ${releaseNumber} does not match releaseVersion ${betas.releaseVersion}`);
     }
-    return { ...beta, source: "metadata-json" };
+    return { ...betas, source: "metadata-json" };
   }
 
-  if (baseVersion == null || betaNumber == null) {
-    fail("beta metadata.json must include betaVersion or baseVersion+betaNumber");
+  if (baseVersion == null || releaseNumber == null) {
+    fail("betas metadata.json must include releaseVersion or baseVersion+releaseNumber");
   }
 
   const parsedBase = parseReleaseBaseVersion(baseVersion);
   if (parsedBase == null) {
-    fail(`beta metadata.json baseVersion must be x.y.z; got ${baseVersion}`);
+    fail(`betas metadata.json baseVersion must be x.y.z; got ${baseVersion}`);
   }
 
-  return { ...parseBetaParts(baseVersion, String(betaNumber)), source: "metadata-json" };
+  return { ...parseBetasParts(baseVersion, String(releaseNumber)), source: "metadata-json" };
 }
 
 function parseStableMetadataJson(value: string): ParsedStableVersion {
@@ -171,7 +171,7 @@ function fetchOptionalHttpsTextOnce(url: string, redirectCount = 0): Promise<str
   return new Promise((resolvePromise, reject) => {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") {
-      reject(new Error(`expected HTTPS URL for beta feed lookup: ${parsed.protocol}`));
+      reject(new Error(`expected HTTPS URL for betas feed lookup: ${parsed.protocol}`));
       return;
     }
 
@@ -194,7 +194,7 @@ function fetchOptionalHttpsTextOnce(url: string, redirectCount = 0): Promise<str
         if (statusCode >= 300 && statusCode < 400 && typeof location === "string") {
           response.resume();
           if (redirectCount >= 3) {
-            reject(new Error("too many redirects while reading beta feed"));
+            reject(new Error("too many redirects while reading betas feed"));
             return;
           }
           const nextUrl = new URL(location, parsed).toString();
@@ -204,7 +204,7 @@ function fetchOptionalHttpsTextOnce(url: string, redirectCount = 0): Promise<str
 
         if (statusCode < 200 || statusCode >= 300) {
           response.resume();
-          reject(new Error(`beta feed request failed with HTTP ${statusCode}`));
+          reject(new Error(`betas feed request failed with HTTP ${statusCode}`));
           return;
         }
 
@@ -219,7 +219,7 @@ function fetchOptionalHttpsTextOnce(url: string, redirectCount = 0): Promise<str
     );
 
     request.setTimeout(10_000, () => {
-      request.destroy(new Error("timed out while reading beta feed"));
+      request.destroy(new Error("timed out while reading betas feed"));
     });
     request.on("error", reject);
   });
@@ -236,7 +236,7 @@ async function fetchOptionalHttpsText(url: string): Promise<string | null> {
       }
       const delayMs = 1_000 * attempt;
       console.warn(
-        `[release-beta] metadata request failed (attempt ${attempt}/${maxAttempts}); retrying in ${delayMs}ms: ${
+        `[release-betas] metadata request failed (attempt ${attempt}/${maxAttempts}); retrying in ${delayMs}ms: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -277,7 +277,7 @@ if (stableMetadataUrl != null && stableMetadataUrl.length > 0) {
     fail(`stable metadata.json was not found: ${stableMetadataUrl}`);
   }
   latestStable = parseStableMetadataJson(stableMetadataJson);
-  console.log(`[release-beta] stable metadata.json version: ${latestStable.value}`);
+  console.log(`[release-betas] stable metadata.json version: ${latestStable.value}`);
 } else {
   const tags = await fetchGitTags("open-design-v*");
   for (const tag of tags) {
@@ -294,65 +294,65 @@ if (latestStable != null && compareReleaseBaseVersions(packagedParsed, latestSta
   fail(`packaged base version ${packagedVersion} must be strictly greater than latest stable ${latestStable.value}`);
 }
 
-const metadataUrl = process.env.OPEN_DESIGN_BETA_METADATA_URL;
+const metadataUrl = process.env.OPEN_DESIGN_BETAS_METADATA_URL;
 if (metadataUrl == null || metadataUrl.length === 0) {
-  fail("OPEN_DESIGN_BETA_METADATA_URL is required");
+  fail("OPEN_DESIGN_BETAS_METADATA_URL is required");
 }
-validateHttpsUrl(metadataUrl, "OPEN_DESIGN_BETA_METADATA_URL");
+validateHttpsUrl(metadataUrl, "OPEN_DESIGN_BETAS_METADATA_URL");
 
-let betaNumber = 1;
-let latestBeta: ParsedBetaVersion | null = null;
-let stateSource = "beta metadata.json";
+let releaseNumber = 1;
+let latestBetas: ParsedBetasVersion | null = null;
+let stateSource = "betas metadata.json";
 const latestMetadataJson = await fetchOptionalHttpsText(metadataUrl);
 if (latestMetadataJson == null) {
   // Only HTTP 404 reaches this branch; other fetch failures throw above. This
-  // is an intentional cold-start/reset behavior for a missing beta metadata
+  // is an intentional cold-start/reset behavior for a missing betas metadata
   // object, not a fallback to any updater feed or GitHub release state.
-  latestBeta = {
+  latestBetas = {
     baseVersion: packagedVersion,
-    betaNumber: 0,
-    betaVersion: `${packagedVersion}-beta.0`,
+    releaseNumber: 0,
+    releaseVersion: `${packagedVersion}-betas.0`,
   };
-  stateSource = "missing beta metadata.json fallback beta.0";
-  console.log("[release-beta] beta metadata.json: not found; using beta.0 fallback");
+  stateSource = "missing betas metadata.json fallback betas.0";
+  console.log("[release-betas] betas metadata.json: not found; using betas.0 fallback");
 } else {
-  latestBeta = parseBetaMetadataJson(latestMetadataJson);
-  console.log(`[release-beta] beta metadata.json version: ${latestBeta.betaVersion}`);
+  latestBetas = parseBetasMetadataJson(latestMetadataJson);
+  console.log(`[release-betas] betas metadata.json version: ${latestBetas.releaseVersion}`);
 }
 
-if (latestBeta != null) {
-  const beta = latestBeta;
-  const existingBase = parseReleaseBaseVersion(beta.baseVersion);
+if (latestBetas != null) {
+  const betas = latestBetas;
+  const existingBase = parseReleaseBaseVersion(betas.baseVersion);
   if (existingBase == null) {
-    fail(`invalid beta base version in ${stateSource}: ${beta.baseVersion}`);
+    fail(`invalid betas base version in ${stateSource}: ${betas.baseVersion}`);
   }
 
   const ordering = compareReleaseBaseVersions(packagedParsed, existingBase);
   if (ordering < 0) {
-    fail(`packaged base version ${packagedVersion} regressed below current beta base version ${beta.baseVersion}`);
+    fail(`packaged base version ${packagedVersion} regressed below current betas base version ${betas.baseVersion}`);
   }
 
   if (ordering === 0) {
-    betaNumber = beta.betaNumber + 1;
+    releaseNumber = betas.releaseNumber + 1;
   }
 }
 
-const betaVersion = `${packagedVersion}-beta.${betaNumber}`;
+const releaseVersion = `${packagedVersion}-betas.${releaseNumber}`;
 const branch = process.env.GITHUB_REF_NAME ?? "";
 const commit = process.env.GITHUB_SHA ?? "";
-const releaseName = `Open Design Beta ${betaVersion}`;
+const releaseName = `Open Design Betas ${releaseVersion}`;
 
-console.log(`[release-beta] channel: beta`);
-console.log(`[release-beta] base version: ${packagedVersion}`);
-console.log(`[release-beta] beta version: ${betaVersion}`);
-console.log(`[release-beta] beta state source: ${stateSource}`);
-if (latestStable != null) console.log(`[release-beta] latest stable: ${latestStable.value}`);
-if (latestBeta != null) console.log(`[release-beta] latest beta: ${latestBeta.betaVersion}`);
+console.log(`[release-betas] channel: betas`);
+console.log(`[release-betas] base version: ${packagedVersion}`);
+console.log(`[release-betas] release version: ${releaseVersion}`);
+console.log(`[release-betas] state source: ${stateSource}`);
+if (latestStable != null) console.log(`[release-betas] latest stable: ${latestStable.value}`);
+if (latestBetas != null) console.log(`[release-betas] latest betas: ${latestBetas.releaseVersion}`);
 
 setOutput("asset_version_suffix", "");
 setOutput("base_version", packagedVersion);
-setOutput("beta_number", String(betaNumber));
-setOutput("beta_version", betaVersion);
+setOutput("release_number", String(releaseNumber));
+setOutput("release_version", releaseVersion);
 setOutput("branch", branch);
 setOutput("commit", commit);
 setOutput("latest_stable", latestStable?.value ?? "");

@@ -3,17 +3,9 @@ name: release-stable
 on:
   workflow_dispatch:
     inputs:
-      channel:
-        description: "Release channel. prerelease publishes to R2 only; stable also creates a GitHub Release and tag."
-        required: true
-        type: choice
-        options:
-          - stable
-          - prerelease
-        default: stable
       prerelease_version:
-        description: "Required when channel=stable: exact validated prerelease version to promote, for example 0.5.1-prerelease.3."
-        required: false
+        description: "Exact validated prerelease version to promote, for example 0.5.1-prerelease.3."
+        required: true
         type: string
       release_version:
         description: "Stable base version to publish, for example 0.5.1. Required when ref is not release/vX.Y.Z."
@@ -23,7 +15,7 @@ on:
         description: "Validate release inputs and read-only remote gates without building or publishing."
         required: false
         type: boolean
-        default: false
+        default: true
       ref:
         description: "Optional git ref (branch/tag/SHA) to build. Empty builds the ref this workflow was dispatched on."
         required: false
@@ -31,16 +23,10 @@ on:
         default: ""
   workflow_call:
     inputs:
-      channel:
-        description: "Release channel (prerelease or stable)."
-        required: false
-        type: string
-        default: prerelease
       prerelease_version:
-        description: "Required when channel=stable: exact validated prerelease version to promote."
-        required: false
+        description: "Exact validated prerelease version to promote."
+        required: true
         type: string
-        default: ""
       release_version:
         description: "Stable base version to publish. Required when ref is not release/vX.Y.Z."
         required: false
@@ -50,7 +36,7 @@ on:
         description: "Validate release inputs and read-only remote gates without building or publishing."
         required: false
         type: boolean
-        default: false
+        default: true
       ref:
         description: "Optional git ref (branch/tag/SHA) to build. Empty builds the caller's ref."
         required: false
@@ -58,10 +44,10 @@ on:
         default: ""
     outputs:
       release_version:
-        description: "The version that was built (x.y.z-prerelease.N for prerelease)."
+        description: "The stable version that was validated or published."
         value: ${{ jobs.metadata.outputs.release_version }}
       channel:
-        description: "The channel that was built."
+        description: "The stable release channel."
         value: ${{ jobs.metadata.outputs.channel }}
       branch:
         description: "The branch that was built."
@@ -96,7 +82,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: open-design-release-stable-${{ inputs.channel }}-${{ inputs.dry_run && 'dry-run' || 'publish' }}
+  group: open-design-release-stable-${{ inputs.dry_run && 'dry-run' || 'publish' }}
   cancel-in-progress: false
 
 env:
@@ -125,7 +111,7 @@ jobs:
       GITHUB_REPOSITORY: ${{ github.repository }}
       OPEN_DESIGN_PRERELEASE_METADATA_URL: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}/prerelease/latest/metadata.json
       OPEN_DESIGN_RELEASE_DRY_RUN: ${{ inputs.dry_run }}
-      OPEN_DESIGN_RELEASE_CHANNEL: ${{ inputs.channel }}
+      OPEN_DESIGN_RELEASE_CHANNEL: stable
       OPEN_DESIGN_RELEASES_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
       OPEN_DESIGN_STABLE_PRERELEASE_VERSION: ${{ inputs.prerelease_version }}
       OPEN_DESIGN_STABLE_VERSION: ${{ inputs.release_version }}
@@ -183,7 +169,7 @@ jobs:
         env:
           GITHUB_SHA: ${{ env.BUILT_SHA }}
           GITHUB_REF_NAME: ${{ inputs.ref != '' && inputs.ref || github.ref_name }}
-        run: node --experimental-strip-types ./scripts/release-stable.ts
+        run: pnpm exec tools-release prepare stable
 
       - name: Validate R2 release access
         if: ${{ steps.stable.outputs.dry_run != 'true' }}
@@ -196,7 +182,7 @@ jobs:
           CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
           CLOUDFLARE_R2_RELEASES_URL: ${{ secrets.CLOUDFLARE_R2_RELEASES_URL }}
           R2_ACCESS_PROBE_NAME: ${{ steps.stable.outputs.namespace }}
-          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_CHANNEL: stable
         run: bash .github/scripts/release/r2/check.sh
 
   verify:
@@ -464,7 +450,7 @@ jobs:
           RELEASE_TARGET: mac_arm64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
-        run: bash .github/workflow/scripts/release/prepare-platform-assets.sh
+        run: bash tools/release/scripts/prepare-platform-assets.sh
 
       - name: Publish mac platform
         env:
@@ -485,7 +471,7 @@ jobs:
           RELEASE_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_RELEASES_SK }}
           RELEASE_TARGET: mac_arm64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-platform.ts
+        run: pnpm exec tools-release publish-platform
 
       - name: Upload mac publish manifest
         uses: actions/upload-artifact@v7
@@ -574,7 +560,7 @@ jobs:
           RELEASE_TARGET: mac_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
-        run: bash .github/workflow/scripts/release/prepare-platform-assets.sh
+        run: bash tools/release/scripts/prepare-platform-assets.sh
 
       - name: Publish mac intel platform
         env:
@@ -593,7 +579,7 @@ jobs:
           RELEASE_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_RELEASES_SK }}
           RELEASE_TARGET: mac_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-platform.ts
+        run: pnpm exec tools-release publish-platform
 
       - name: Upload mac intel publish manifest
         uses: actions/upload-artifact@v7
@@ -785,7 +771,7 @@ jobs:
       - name: Prepare windows release assets
         shell: pwsh
         run: |
-          .\.github\workflow\scripts\release\prepare-platform-assets.ps1 `
+          tools\release\scripts\prepare-platform-assets.ps1 `
             -ReleaseTarget win_x64 `
             -ReleaseAssetsDir "${{ runner.temp }}\release-assets" `
             -BuildJsonPath "${{ runner.temp }}\windows-tools-pack-build.json" `
@@ -815,7 +801,7 @@ jobs:
           RELEASE_TARGET: win_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           WIN_INCLUDE_ZIP: "true"
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-platform.ts
+        run: pnpm exec tools-release publish-platform
 
       - name: Upload windows publish manifest
         uses: actions/upload-artifact@v7
@@ -941,7 +927,7 @@ jobs:
           RELEASE_TARGET: linux_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
-        run: bash .github/workflow/scripts/release/prepare-platform-assets.sh
+        run: bash tools/release/scripts/prepare-platform-assets.sh
 
       - name: Publish linux platform
         env:
@@ -960,7 +946,7 @@ jobs:
           RELEASE_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_RELEASES_SK }}
           RELEASE_TARGET: linux_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-platform.ts
+        run: pnpm exec tools-release publish-platform
 
       - name: Upload linux publish manifest
         uses: actions/upload-artifact@v7
@@ -1187,7 +1173,7 @@ jobs:
           STATE_SOURCE: ${{ needs.metadata.outputs.state_source }}
           VERSION_TAG: ${{ needs.metadata.outputs.version_tag }}
           WIN_X64_RESULT: ${{ needs.build_win.result }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-metadata.ts
+        run: pnpm exec tools-release publish-metadata
 
       - name: Read metadata outputs
         id: outputs
@@ -1211,7 +1197,7 @@ jobs:
           RELEASE_METADATA_URL: ${{ steps.outputs.outputs.version_metadata_url }}
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           WIN_X64_RESULT: ${{ needs.build_win.result }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/verify-metadata.ts
+        run: pnpm exec tools-release verify-metadata
 
       - name: Promote draft to published latest
         if: ${{ needs.metadata.outputs.github_release_enabled == 'true' }}
@@ -1236,7 +1222,7 @@ jobs:
           RELEASE_METADATA_URL: ${{ steps.outputs.outputs.version_metadata_url }}
           RELEASE_SUMMARY_PATH: ${{ runner.temp }}/release-metadata/summary.md
         run: |
-          node --experimental-strip-types .github/workflow/scripts/release/storage/summary-metadata.ts
+          pnpm exec tools-release summary-metadata
           cat "${{ runner.temp }}/release-metadata/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Cleanup workflow artifacts

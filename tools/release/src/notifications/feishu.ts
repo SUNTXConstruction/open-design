@@ -23,7 +23,10 @@
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-function required(name) {
+type FeishuElement = Record<string, unknown>;
+type FeishuCard = Record<string, unknown>;
+
+function required(name: string): string {
   const value = process.env[name];
   if (value == null || value.length === 0) {
     throw new Error(`${name} is required`);
@@ -31,7 +34,7 @@ function required(name) {
   return value;
 }
 
-function optional(name, fallback = "") {
+function optional(name: string, fallback = ""): string {
   const value = process.env[name];
   return value == null || value.length === 0 ? fallback : value;
 }
@@ -60,7 +63,7 @@ const DOWNLOADS = [
   { label: "Linux", url: optional("LINUX_URL") },
 ];
 
-function downloadButtons() {
+function downloadButtons(): FeishuElement[] {
   const present = DOWNLOADS.filter((d) => d.url.length > 0);
   return present.map((d, index) => ({
     tag: "button",
@@ -70,7 +73,7 @@ function downloadButtons() {
   }));
 }
 
-function readChangelog() {
+function readChangelog(): { lines: string[]; total: number; truncated: boolean } {
   if (changelogFile.length === 0) return { lines: [], truncated: false, total: 0 };
   let raw = "";
   try {
@@ -86,7 +89,7 @@ function readChangelog() {
   return { lines: truncated ? all.slice(0, MAX_CHANGELOG_LINES) : all, truncated, total: all.length };
 }
 
-function changelogMarkdown() {
+function changelogMarkdown(): string {
   const { lines, truncated, total } = readChangelog();
   if (previousCommit.length === 0) {
     return `首个 ${channelLabel} 包,无上个版本可对比。`;
@@ -101,13 +104,13 @@ function changelogMarkdown() {
   return body;
 }
 
-function headerTemplate() {
+function headerTemplate(): "blue" | "red" {
   return buildState === "success" ? "blue" : "red";
 }
 
-function buildCard() {
+function buildCard(): FeishuCard {
   const shortCommit = commit.length >= 7 ? commit.slice(0, 7) : commit;
-  const fields = [];
+  const fields: FeishuElement[] = [];
   if (branch.length > 0) {
     fields.push({ is_short: true, text: { tag: "lark_md", content: `**分支**\n${branch}` } });
   }
@@ -118,7 +121,7 @@ function buildCard() {
   fields.push({ is_short: true, text: { tag: "lark_md", content: `**渠道**\n${channelLabel}` } });
   fields.push({ is_short: true, text: { tag: "lark_md", content: `**触发**\n${streamLabel}` } });
 
-  const elements = [{ tag: "div", fields }];
+  const elements: FeishuElement[] = [{ tag: "div", fields }];
   elements.push({
     tag: "div",
     text: { tag: "lark_md", content: `**自上个 ${channelLabel} 新增提交**\n${changelogMarkdown()}` },
@@ -147,7 +150,7 @@ function buildCard() {
   };
 }
 
-function signedEnvelope(card) {
+function signedEnvelope(card: FeishuCard): Record<string, unknown> {
   const body = { msg_type: "interactive", card };
   if (signSecret.length === 0) return body;
   // Feishu signing: HMAC-SHA256 over empty bytes, keyed by `${timestamp}\n${secret}`.
@@ -157,12 +160,12 @@ function signedEnvelope(card) {
   return { timestamp, sign, ...body };
 }
 
-function sleep(attempt) {
+function sleep(attempt: number): Promise<void> {
   const ms = Math.min(1000 * 2 ** (attempt - 1), 15000);
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function post(body) {
+async function post(body: Record<string, unknown>): Promise<void> {
   const attempts = 5;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     let res;

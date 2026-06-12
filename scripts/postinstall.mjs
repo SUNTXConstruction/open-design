@@ -23,6 +23,7 @@ const buildTargets = [
   "apps/daemon",
   "tools/dev",
   "tools/pack",
+  "tools/release",
   "tools/serve",
 ];
 

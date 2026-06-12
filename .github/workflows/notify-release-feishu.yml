@@ -1,7 +1,7 @@
 name: notify-release-feishu
 
 # On every push to a release/** branch, build a full prerelease package by reusing
-# release-stable (channel=prerelease), then post a Feishu card with the download
+# release-prerelease, then post a Feishu card with the download
 # links (macOS arm64 + Intel, Windows, and Linux when enabled) and the changelog
 # since the previously published prerelease. Consecutive pushes to the same branch
 # are throttled, not debounced: an in-flight build is allowed to finish (so a
@@ -12,7 +12,7 @@ name: notify-release-feishu
 #
 # Also dispatchable by hand (workflow_dispatch) so a prerelease + Feishu card can be
 # cut without an actual push. The normal manual path is to dispatch ON a
-# release/vX.Y.Z branch with `ref`/`release_version` empty — release-stable then
+# release/vX.Y.Z branch with `ref`/`release_version` empty — release-prerelease then
 # derives the version from the branch name exactly like the push trigger does.
 # Building from a non-release ref such as main is also possible but requires
 # `release_version` (e.g. 0.10.0, matching apps/packaged/package.json), because
@@ -54,17 +54,16 @@ jobs:
   build:
     name: Build prerelease from release branch
     if: github.repository == 'nexu-io/open-design'
-    uses: ./.github/workflows/release-stable.yml
+    uses: ./.github/workflows/release-prerelease.yml
     secrets: inherit
     with:
-      channel: prerelease
-      # Empty on push events (inputs context is unset there), so release-stable
+      # Empty on push events (inputs context is unset there), so release-prerelease
       # falls back to building the pushed commit. On workflow_dispatch this
       # carries the operator-chosen ref (or empty = the dispatch ref).
       ref: ${{ inputs.ref }}
       # Empty on push and on release/vX.Y.Z dispatches (branch name carries the
       # version). Only set when building from a non-release ref like main, where
-      # release-stable cannot derive the base version from the branch name.
+      # release-prerelease cannot derive the base version from the branch name.
       release_version: ${{ inputs.release_version }}
 
   notify:
@@ -76,7 +75,7 @@ jobs:
       - name: Checkout built ref
         uses: actions/checkout@v6.0.2
         with:
-          # The commit release-stable actually built, not github.sha. On push
+          # The commit release-prerelease actually built, not github.sha. On push
           # the two coincide, but on workflow_dispatch with an explicit ref they
           # can differ — anchoring on the built commit keeps the changelog range
           # (previous_commit..commit) correct for manual prerelease runs.
@@ -120,4 +119,4 @@ jobs:
           STREAM_LABEL: "release 分支推送"
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node --experimental-strip-types .github/scripts/release/feishu/notify.ts
+        run: pnpm exec tools-release notify feishu

@@ -2,40 +2,51 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { githubInfo, optional, publicUrl, required, storageConfigFromEnv, writeJson } from "./common.ts";
 import { getStorageObjectText, putStorageObjectWithStatus, type StorageConfig } from "./s3-upload.ts";
+import { parseCountedReleaseVersion, type CountedReleaseChannel } from "@open-design/release";
 
-const betaVersionPattern = /^(\d+\.\d+\.\d+)-beta\.(\d+)$/;
-
-export type BetaVersionReservation = {
+export type CountedVersionReservation = {
   baseVersion: string;
-  betaNumber: number;
-  channel: "beta";
+  channel: CountedReleaseChannel;
   createdAt: string;
   kind: "version-reservation";
   lane: string;
   owner: Record<string, unknown>;
+  releaseNumber: number;
   releaseVersion: string;
   state: "reserved";
   version: 1;
 };
 
-export function parseBetaVersion(value: string): { baseVersion: string; betaNumber: number; releaseVersion: string } {
-  const match = betaVersionPattern.exec(value);
-  if (match?.[1] == null || match[2] == null) {
-    throw new Error(`release version must be x.y.z-beta.N; got ${value}`);
-  }
-  const betaNumber = Number(match[2]);
-  if (!Number.isSafeInteger(betaNumber) || betaNumber < 1) {
-    throw new Error(`release version beta number must be a positive integer; got ${value}`);
+export type BetaVersionReservation = CountedVersionReservation & {
+  betaNumber?: number;
+  channel: "beta";
+};
+
+function requiredCountedChannel(): CountedReleaseChannel {
+  const channel = required("RELEASE_CHANNEL");
+  if (channel === "stable") throw new Error("version reservation only supports counted release channels");
+  return channel as CountedReleaseChannel;
+}
+
+export function parseCountedVersion(value: string, channel: CountedReleaseChannel): { baseVersion: string; releaseNumber: number; releaseVersion: string } {
+  const parsed = parseCountedReleaseVersion(value, channel);
+  if (parsed == null) {
+    throw new Error(`release version must be x.y.z-${channel}.N; got ${value}`);
   }
   return {
-    baseVersion: match[1],
-    betaNumber,
+    baseVersion: parsed.baseVersion,
+    releaseNumber: parsed.number,
     releaseVersion: value,
   };
 }
 
-export function versionLockObjectKey(releaseVersion: string): string {
-  return `beta/versions/${releaseVersion}/version.lock.json`;
+export function parseBetaVersion(value: string): { baseVersion: string; betaNumber: number; releaseVersion: string } {
+  const parsed = parseCountedVersion(value, "beta");
+  return { baseVersion: parsed.baseVersion, betaNumber: parsed.releaseNumber, releaseVersion: parsed.releaseVersion };
+}
+
+export function versionLockObjectKey(releaseVersion: string, channel: CountedReleaseChannel = "beta"): string {
+  return `${channel}/versions/${releaseVersion}/version.lock.json`;
 }
 
 function sameOwner(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
@@ -45,17 +56,17 @@ function sameOwner(left: Record<string, unknown>, right: Record<string, unknown>
     left.commit === right.commit;
 }
 
-export async function readVersionReservation(storage: StorageConfig, objectKey: string): Promise<BetaVersionReservation | null> {
+export async function readVersionReservation(storage: StorageConfig, objectKey: string): Promise<CountedVersionReservation | null> {
   const text = await getStorageObjectText({ ...storage, objectKey });
   if (text == null) return null;
-  const parsed = JSON.parse(text.replace(/^\uFEFF/u, "")) as BetaVersionReservation;
+  const parsed = JSON.parse(text.replace(/^\uFEFF/u, "")) as CountedVersionReservation;
   return parsed;
 }
 
-export function validateVersionReservation(reservation: BetaVersionReservation, releaseVersion: string): string | null {
+export function validateVersionReservation(reservation: CountedVersionReservation, releaseVersion: string, channel: CountedReleaseChannel = "beta"): string | null {
   const owner = githubInfo();
   if (reservation.kind !== "version-reservation") return `kind=${String(reservation.kind)}`;
-  if (reservation.channel !== "beta") return `channel=${String(reservation.channel)}`;
+  if (reservation.channel !== channel) return `channel=${String(reservation.channel)}`;
   if (reservation.releaseVersion !== releaseVersion) return `releaseVersion=${String(reservation.releaseVersion)}`;
   if (reservation.state !== "reserved") return `state=${String(reservation.state)}`;
   if (!sameOwner(reservation.owner, owner)) {
@@ -64,14 +75,14 @@ export function validateVersionReservation(reservation: BetaVersionReservation, 
   return null;
 }
 
-export async function assertCurrentVersionReservation(storage: StorageConfig, releaseVersion: string, objectKey = versionLockObjectKey(releaseVersion)): Promise<BetaVersionReservation> {
+export async function assertCurrentVersionReservation(storage: StorageConfig, releaseVersion: string, objectKey = versionLockObjectKey(releaseVersion), channel: CountedReleaseChannel = "beta"): Promise<CountedVersionReservation> {
   const reservation = await readVersionReservation(storage, objectKey);
   if (reservation == null) {
-    throw new Error(`missing beta version reservation: ${objectKey}`);
+    throw new Error(`missing ${channel} version reservation: ${objectKey}`);
   }
-  const invalidReason = validateVersionReservation(reservation, releaseVersion);
+  const invalidReason = validateVersionReservation(reservation, releaseVersion, channel);
   if (invalidReason != null) {
-    throw new Error(`beta version reservation is not owned by this run: ${objectKey}: ${invalidReason}`);
+    throw new Error(`${channel} version reservation is not owned by this run: ${objectKey}: ${invalidReason}`);
   }
   return reservation;
 }
@@ -79,31 +90,33 @@ export async function assertCurrentVersionReservation(storage: StorageConfig, re
 export async function reserveVersion(options: {
   baseVersion: string;
   candidateVersion: string;
+  channel?: CountedReleaseChannel;
   lane: string;
   manualOverride: boolean;
   maxAttempts: number;
   metadataDir: string;
   publicOrigin: string;
   storage: StorageConfig;
-}): Promise<{ objectKey: string; reservation: BetaVersionReservation; url: string }> {
-  const candidate = parseBetaVersion(options.candidateVersion);
+}): Promise<{ objectKey: string; reservation: CountedVersionReservation; url: string }> {
+  const channel = options.channel ?? "beta";
+  const candidate = parseCountedVersion(options.candidateVersion, channel);
   if (candidate.baseVersion !== options.baseVersion) {
     throw new Error(`candidate baseVersion ${candidate.baseVersion} does not match ${options.baseVersion}`);
   }
 
   const attempts = options.manualOverride ? 1 : options.maxAttempts;
   for (let offset = 0; offset < attempts; offset += 1) {
-    const betaNumber = candidate.betaNumber + offset;
-    const releaseVersion = `${options.baseVersion}-beta.${betaNumber}`;
-    const objectKey = versionLockObjectKey(releaseVersion);
-    const reservation: BetaVersionReservation = {
+    const releaseNumber = candidate.releaseNumber + offset;
+    const releaseVersion = `${options.baseVersion}-${channel}.${releaseNumber}`;
+    const objectKey = versionLockObjectKey(releaseVersion, channel);
+    const reservation: CountedVersionReservation = {
       baseVersion: options.baseVersion,
-      betaNumber,
-      channel: "beta",
+      channel,
       createdAt: new Date().toISOString(),
       kind: "version-reservation",
       lane: options.lane,
       owner: githubInfo(),
+      releaseNumber,
       releaseVersion,
       state: "reserved",
       version: 1,
@@ -119,16 +132,16 @@ export async function reserveVersion(options: {
       headers: { "if-none-match": "*" },
       objectKey,
     });
-    const accept = (reservation: BetaVersionReservation) => {
+    const accept = (reservation: CountedVersionReservation) => {
       writeJson(join(options.metadataDir, "reserved-version.lock.json"), reservation);
       return {
         objectKey,
         reservation,
-        url: publicUrl(options.publicOrigin, `beta/versions/${releaseVersion}`, "version.lock.json"),
+        url: publicUrl(options.publicOrigin, `${channel}/versions/${releaseVersion}`, "version.lock.json"),
       };
     };
     if (result.ok) {
-      return accept(await assertCurrentVersionReservation(options.storage, releaseVersion, objectKey));
+      return accept(await assertCurrentVersionReservation(options.storage, releaseVersion, objectKey, channel));
     }
     if (result.status !== 412) {
       throw new Error(`version reservation PUT ${objectKey} failed with HTTP ${result.status}${result.body.length > 0 ? `: ${result.body}` : ""}`);
@@ -140,16 +153,16 @@ export async function reserveVersion(options: {
     // Read the lock back — if this run owns it, the reservation truly succeeded.
     // Only a lock owned by a different run is a real collision.
     const existing = await readVersionReservation(options.storage, objectKey);
-    if (existing != null && validateVersionReservation(existing, releaseVersion) == null) {
+    if (existing != null && validateVersionReservation(existing, releaseVersion, channel) == null) {
       return accept(existing);
     }
     if (options.manualOverride) {
       throw new Error(`release_version ${releaseVersion} is already reserved at ${objectKey}`);
     }
-    console.log(`beta version ${releaseVersion} is already reserved; trying next beta number`);
+    console.log(`${channel} version ${releaseVersion} is already reserved; trying next release number`);
   }
 
-  throw new Error(`failed to reserve a beta version after ${attempts} attempts starting at ${options.candidateVersion}`);
+  throw new Error(`failed to reserve a ${channel} version after ${attempts} attempts starting at ${options.candidateVersion}`);
 }
 
 export function writeGithubOutputs(outputs: Record<string, string>): void {

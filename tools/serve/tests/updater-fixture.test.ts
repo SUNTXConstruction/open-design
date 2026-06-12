@@ -18,19 +18,17 @@ describe("updater fixture server", () => {
       expect(metadataResponse.ok).toBe(true);
       const metadata = await metadataResponse.json() as {
         baseVersion?: string;
-        betaNumber?: number;
-        betaVersion?: string;
         channel?: string;
         platforms?: {
           mac?: { artifacts?: { dmg?: { sha256Url?: string; url?: string } } };
           win?: { artifacts?: { installer?: { sha256Url?: string; url?: string } } };
         };
+        releaseNumber?: number;
         releaseVersion?: string;
       };
       expect(metadata.channel).toBe("beta");
       expect(metadata.baseVersion).toBe("2.0.0");
-      expect(metadata.betaNumber).toBe(1);
-      expect(metadata.betaVersion).toBe("2.0.0-beta.1");
+      expect(metadata.releaseNumber).toBe(1);
       expect(metadata.releaseVersion).toBe("2.0.0-beta.1");
       expect(metadata.platforms?.mac?.artifacts?.dmg?.url).toBe(server.info.artifactUrl);
       expect(metadata.platforms?.mac?.artifacts?.dmg?.sha256Url).toBe(server.info.checksumUrl);
@@ -268,7 +266,11 @@ describe("updater fixture server", () => {
     }
   });
 
-  it("serves prerelease and preview channel-specific release versions", async () => {
+  it("serves betas, prerelease, and preview generic release versions", async () => {
+    const betas = await startUpdaterFixtureServer({
+      channel: "betas",
+      version: "2.0.0-betas.2",
+    });
     const prerelease = await startUpdaterFixtureServer({
       channel: "prerelease",
       version: "2.0.0-prerelease.3",
@@ -278,28 +280,34 @@ describe("updater fixture server", () => {
       version: "2.0.0-preview.4",
     });
     try {
+      const betasMetadata = await (await fetch(betas.info.metadataUrl)).json() as {
+        channel?: string;
+        releaseNumber?: number;
+        releaseVersion?: string;
+      };
+      expect(betasMetadata.channel).toBe("betas");
+      expect(betasMetadata.releaseNumber).toBe(2);
+      expect(betasMetadata.releaseVersion).toBe("2.0.0-betas.2");
+
       const prereleaseMetadata = await (await fetch(prerelease.info.metadataUrl)).json() as {
         channel?: string;
-        prereleaseNumber?: number;
-        prereleaseVersion?: string;
+        releaseNumber?: number;
         releaseVersion?: string;
       };
       expect(prereleaseMetadata.channel).toBe("prerelease");
-      expect(prereleaseMetadata.prereleaseNumber).toBe(3);
-      expect(prereleaseMetadata.prereleaseVersion).toBe("2.0.0-prerelease.3");
+      expect(prereleaseMetadata.releaseNumber).toBe(3);
       expect(prereleaseMetadata.releaseVersion).toBe("2.0.0-prerelease.3");
 
       const previewMetadata = await (await fetch(preview.info.metadataUrl)).json() as {
         channel?: string;
-        previewNumber?: number;
-        previewVersion?: string;
+        releaseNumber?: number;
         releaseVersion?: string;
       };
       expect(previewMetadata.channel).toBe("preview");
-      expect(previewMetadata.previewNumber).toBe(4);
-      expect(previewMetadata.previewVersion).toBe("2.0.0-preview.4");
+      expect(previewMetadata.releaseNumber).toBe(4);
       expect(previewMetadata.releaseVersion).toBe("2.0.0-preview.4");
     } finally {
+      await betas.close();
       await prerelease.close();
       await preview.close();
     }

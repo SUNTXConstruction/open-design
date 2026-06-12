@@ -1,4 +1,4 @@
-export type CountedReleaseChannel = "beta" | "prerelease" | "preview";
+export type CountedReleaseChannel = "beta" | "betas" | "prerelease" | "preview";
 export type ReleaseChannel = CountedReleaseChannel | "stable";
 export type ReleasePlatform = "mac" | "macIntel" | "win" | "linux";
 
@@ -21,12 +21,12 @@ export type ReleaseChannelDescriptor = {
   appId: string;
   baseVersionField: "baseVersion";
   channel: ReleaseChannel;
-  counterField: `${CountedReleaseChannel}Number` | null;
+  counterField: "releaseNumber" | null;
   displayLabel: string;
   githubReleaseEnabled: boolean;
   internal: boolean;
   productName: string;
-  releaseVersionField: `${CountedReleaseChannel}Version` | "releaseVersion";
+  releaseVersionField: "releaseVersion";
   storagePrefix: ReleaseChannel;
 };
 
@@ -38,6 +38,7 @@ export type ReleaseInstallIdentity = {
 
 export const RELEASE_CHANNELS = Object.freeze({
   BETA: "beta",
+  BETAS: "betas",
   PRERELEASE: "prerelease",
   PREVIEW: "preview",
   STABLE: "stable",
@@ -58,36 +59,48 @@ const descriptors: Record<ReleaseChannel, ReleaseChannelDescriptor> = {
     appId: "io.open-design.desktop.beta",
     baseVersionField: "baseVersion",
     channel: "beta",
-    counterField: "betaNumber",
     displayLabel: "Beta",
     githubReleaseEnabled: false,
     internal: true,
     productName: `${PRODUCT_NAME} Beta`,
-    releaseVersionField: "betaVersion",
+    counterField: "releaseNumber",
+    releaseVersionField: "releaseVersion",
     storagePrefix: "beta",
+  },
+  betas: {
+    appId: "io.open-design.desktop.betas",
+    baseVersionField: "baseVersion",
+    channel: "betas",
+    counterField: "releaseNumber",
+    displayLabel: "Betas",
+    githubReleaseEnabled: false,
+    internal: true,
+    productName: `${PRODUCT_NAME} Betas`,
+    releaseVersionField: "releaseVersion",
+    storagePrefix: "betas",
   },
   prerelease: {
     appId: "io.open-design.desktop.prerelease",
     baseVersionField: "baseVersion",
     channel: "prerelease",
-    counterField: "prereleaseNumber",
+    counterField: "releaseNumber",
     displayLabel: "Prerelease",
     githubReleaseEnabled: false,
     internal: true,
     productName: `${PRODUCT_NAME} Prerelease`,
-    releaseVersionField: "prereleaseVersion",
+    releaseVersionField: "releaseVersion",
     storagePrefix: "prerelease",
   },
   preview: {
     appId: "io.open-design.desktop.preview",
     baseVersionField: "baseVersion",
     channel: "preview",
-    counterField: "previewNumber",
+    counterField: "releaseNumber",
     displayLabel: "Preview",
     githubReleaseEnabled: false,
     internal: false,
     productName: `${PRODUCT_NAME} Preview`,
-    releaseVersionField: "previewVersion",
+    releaseVersionField: "releaseVersion",
     storagePrefix: "preview",
   },
   stable: {
@@ -110,7 +123,7 @@ export function isReleaseChannel(value: unknown): value is ReleaseChannel {
 
 export function releaseChannelDescriptor(channel: string): ReleaseChannelDescriptor {
   if (!isReleaseChannel(channel)) {
-    throw new Error(`RELEASE_CHANNEL must be beta, prerelease, preview, or stable; got ${channel}`);
+    throw new Error(`RELEASE_CHANNEL must be beta, betas, prerelease, preview, or stable; got ${channel}`);
   }
   return descriptors[channel];
 }
@@ -118,6 +131,7 @@ export function releaseChannelDescriptor(channel: string): ReleaseChannelDescrip
 export function releaseChannelFromVersion(version: string | null | undefined): ReleaseChannel | null {
   if (version == null || version.length === 0) return null;
   if (/(?:^|[-.])beta(?:[-.]|$)/i.test(version)) return "beta";
+  if (/(?:^|[-.])betas(?:[-.]|$)/i.test(version)) return "betas";
   if (/(?:^|[-.])preview(?:[-.]|$)/i.test(version)) return "preview";
   if (/(?:^|[-.])prerelease(?:[-.]|$)/i.test(version)) return "prerelease";
   return null;
@@ -126,6 +140,7 @@ export function releaseChannelFromVersion(version: string | null | undefined): R
 export function releaseChannelFromNamespace(namespace: string, defaultNamespace = DEFAULT_NAMESPACE): ReleaseChannel | null {
   if (namespace === defaultNamespace || isReleaseChannelNamespace(namespace, "stable")) return "stable";
   if (isReleaseChannelNamespace(namespace, "beta")) return "beta";
+  if (isReleaseChannelNamespace(namespace, "betas")) return "betas";
   if (isReleaseChannelNamespace(namespace, "prerelease")) return "prerelease";
   if (isReleaseChannelNamespace(namespace, "preview")) return "preview";
   return null;
@@ -216,7 +231,6 @@ export function releaseMetadataVersionFields(channel: ReleaseChannel, releaseVer
   return {
     [descriptor.baseVersionField]: baseVersion,
     [descriptor.counterField]: parsed.number,
-    [descriptor.releaseVersionField]: releaseVersion,
     releaseVersion,
   };
 }

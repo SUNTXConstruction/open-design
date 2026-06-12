@@ -2,6 +2,60 @@ name: release-preview
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Optional git ref to build. Empty builds the dispatched ref."
+        required: false
+        type: string
+        default: ""
+      release_version:
+        description: "Optional base version (x.y.z). Empty uses preview/vX.Y.Z when present, otherwise apps/packaged/package.json."
+        required: false
+        type: string
+        default: ""
+  workflow_call:
+    inputs:
+      ref:
+        description: "Optional git ref to build. Empty builds the caller's ref."
+        required: false
+        type: string
+        default: ""
+      release_version:
+        description: "Optional base version (x.y.z). Empty uses preview/vX.Y.Z when present, otherwise apps/packaged/package.json."
+        required: false
+        type: string
+        default: ""
+    outputs:
+      release_version:
+        description: "The preview version that was built."
+        value: ${{ jobs.metadata.outputs.release_version }}
+      channel:
+        description: "The preview channel."
+        value: ${{ jobs.metadata.outputs.channel }}
+      branch:
+        description: "The branch that was built."
+        value: ${{ jobs.metadata.outputs.branch }}
+      commit:
+        description: "The commit SHA that was built."
+        value: ${{ jobs.metadata.outputs.commit }}
+      previous_commit:
+        description: "Commit SHA of the previously published preview; empty on cold start."
+        value: ${{ jobs.metadata.outputs.previous_commit }}
+      version_metadata_url:
+        description: "Public R2 URL of this build's version metadata.json."
+        value: ${{ jobs.publish.outputs.version_metadata_url }}
+      mac_arm64_url:
+        description: "macOS arm64 dmg download URL."
+        value: ${{ jobs.publish.outputs.mac_arm64_url }}
+      mac_intel_url:
+        description: "macOS x64 dmg download URL."
+        value: ${{ jobs.publish.outputs.mac_intel_url }}
+      win_url:
+        description: "Windows x64 installer download URL."
+        value: ${{ jobs.publish.outputs.win_url }}
+      linux_url:
+        description: "Linux x64 AppImage download URL."
+        value: ${{ jobs.publish.outputs.linux_url }}
 
 permissions:
   actions: write
@@ -33,6 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OPEN_DESIGN_PREVIEW_METADATA_URL: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}/preview/latest/metadata.json
+      OPEN_DESIGN_PREVIEW_VERSION: ${{ inputs.release_version }}
     outputs:
       base_version: ${{ steps.preview.outputs.base_version }}
       branch: ${{ steps.preview.outputs.branch }}
@@ -40,8 +95,10 @@ jobs:
       commit: ${{ steps.preview.outputs.commit }}
       github_release_enabled: ${{ steps.preview.outputs.github_release_enabled }}
       latest_stable: ${{ steps.preview.outputs.latest_stable }}
+      previous_commit: ${{ steps.prev.outputs.previous_commit }}
       preview_number: ${{ steps.preview.outputs.preview_number }}
       preview_version: ${{ steps.preview.outputs.preview_version }}
+      release_number: ${{ steps.preview.outputs.release_number }}
       release_name: ${{ steps.preview.outputs.release_name }}
       release_version: ${{ steps.preview.outputs.release_version }}
       state_source: ${{ steps.preview.outputs.state_source }}
@@ -49,6 +106,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -56,9 +114,23 @@ jobs:
         with:
           node-version: 24
 
+      - name: Resolve built commit
+        run: echo "BUILT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Capture previous preview commit
+        id: prev
+        run: |
+          set -euo pipefail
+          prev="$(curl -fsSL "$OPEN_DESIGN_PREVIEW_METADATA_URL" | jq -r '.github.commit // ""' 2>/dev/null || true)"
+          echo "previous preview commit: ${prev:-<none>}"
+          echo "previous_commit=$prev" >> "$GITHUB_OUTPUT"
+
       - name: Prepare preview release metadata
         id: preview
-        run: node --experimental-strip-types ./scripts/release-preview.ts
+        env:
+          GITHUB_SHA: ${{ env.BUILT_SHA }}
+          GITHUB_REF_NAME: ${{ inputs.ref != '' && inputs.ref || github.ref_name }}
+        run: pnpm exec tools-release prepare preview
 
       - name: Validate R2 preview access
         env:
@@ -81,6 +153,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -117,6 +190,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -311,7 +385,7 @@ jobs:
           RELEASE_TARGET: mac_arm64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
-        run: bash .github/workflow/scripts/release/prepare-platform-assets.sh
+        run: bash tools/release/scripts/prepare-platform-assets.sh
 
       - name: Publish mac preview platform
         env:
@@ -332,7 +406,7 @@ jobs:
           RELEASE_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_RELEASES_SK }}
           RELEASE_TARGET: mac_arm64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-platform.ts
+        run: pnpm exec tools-release publish-platform
 
       - name: Upload mac preview publish manifest
         uses: actions/upload-artifact@v7
@@ -352,6 +426,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -410,7 +485,7 @@ jobs:
           RELEASE_TARGET: mac_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
-        run: bash .github/workflow/scripts/release/prepare-platform-assets.sh
+        run: bash tools/release/scripts/prepare-platform-assets.sh
 
       - name: Publish mac intel preview platform
         env:
@@ -429,7 +504,7 @@ jobs:
           RELEASE_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_RELEASES_SK }}
           RELEASE_TARGET: mac_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-platform.ts
+        run: pnpm exec tools-release publish-platform
 
       - name: Upload mac intel preview publish manifest
         uses: actions/upload-artifact@v7
@@ -449,6 +524,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -611,7 +687,7 @@ jobs:
       - name: Prepare windows preview assets
         shell: pwsh
         run: |
-          .\.github\workflow\scripts\release\prepare-platform-assets.ps1 `
+          tools\release\scripts\prepare-platform-assets.ps1 `
             -ReleaseTarget win_x64 `
             -ReleaseAssetsDir "${{ runner.temp }}\release-assets\win_x64" `
             -BuildJsonPath "${{ runner.temp }}\windows-tools-pack-build.json" `
@@ -641,7 +717,7 @@ jobs:
           RELEASE_TARGET: win_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           WIN_INCLUDE_ZIP: "true"
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-platform.ts
+        run: pnpm exec tools-release publish-platform
 
       - name: Upload windows preview publish manifest
         uses: actions/upload-artifact@v7
@@ -662,6 +738,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -699,7 +776,7 @@ jobs:
           RELEASE_TARGET: linux_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
-        run: bash .github/workflow/scripts/release/prepare-platform-assets.sh
+        run: bash tools/release/scripts/prepare-platform-assets.sh
 
       - name: Publish linux preview platform
         env:
@@ -717,7 +794,7 @@ jobs:
           RELEASE_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_RELEASES_SK }}
           RELEASE_TARGET: linux_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-platform.ts
+        run: pnpm exec tools-release publish-platform
 
       - name: Upload linux preview publish manifest
         uses: actions/upload-artifact@v7
@@ -748,8 +825,15 @@ jobs:
         (needs.build_linux.result == 'success' || needs.build_linux.result == 'skipped')
       }}
     runs-on: ubuntu-latest
+    outputs:
+      version_metadata_url: ${{ steps.outputs.outputs.version_metadata_url }}
+      mac_arm64_url: ${{ steps.outputs.outputs.mac_arm64_dmg_url }}
+      mac_intel_url: ${{ steps.outputs.outputs.mac_x64_dmg_url }}
+      win_url: ${{ steps.outputs.outputs.win_x64_installer_url }}
+      linux_url: ${{ steps.outputs.outputs.linux_x64_appImage_url }}
     env:
       GH_TOKEN: ${{ github.token }}
+      GITHUB_SHA: ${{ needs.metadata.outputs.commit }}
       AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_RELEASES_AK }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_RELEASES_SK }}
       AWS_DEFAULT_REGION: auto
@@ -775,6 +859,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -832,7 +917,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           STATE_SOURCE: ${{ needs.metadata.outputs.state_source }}
           WIN_X64_RESULT: ${{ needs.build_win.result }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/publish-metadata.ts
+        run: pnpm exec tools-release publish-metadata
 
       - name: Read metadata outputs
         id: outputs
@@ -856,14 +941,14 @@ jobs:
           RELEASE_METADATA_URL: ${{ steps.outputs.outputs.version_metadata_url }}
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           WIN_X64_RESULT: ${{ needs.build_win.result }}
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/verify-metadata.ts
+        run: pnpm exec tools-release verify-metadata
 
       - name: Write preview metadata summary
         env:
           RELEASE_CHANNEL: preview
           RELEASE_METADATA_URL: ${{ steps.outputs.outputs.version_metadata_url }}
           RELEASE_SUMMARY_PATH: ${{ runner.temp }}/release-metadata/summary.md
-        run: node --experimental-strip-types .github/workflow/scripts/release/storage/summary-metadata.ts
+        run: pnpm exec tools-release summary-metadata
 
       - name: Publish summary
         run: cat "${{ runner.temp }}/release-metadata/summary.md" >> "$GITHUB_STEP_SUMMARY"
@@ -887,6 +972,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
 
       - name: Delete unpublished preview asset artifacts
         env:
