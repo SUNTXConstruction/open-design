@@ -1422,24 +1422,38 @@ export function HomeView({
   // Consume a one-shot Home composer chip intent (e.g. "Use in new chat" on the
   // Brands tab requesting the Prototype scenario). The entry shell keeps
   // HomeView mounted across view switches, so we react to the intent event
-  // rather than to mount. Guard on the plugin catalog being loaded — chip
-  // dispatch resolves a bundled plugin — and re-run when `plugins` arrives so an
-  // intent queued before the catalog loaded is still honored once it does.
+  // rather than to mount.
+  //
+  // The producer (Brands tab) applies the brand's design system as the default
+  // and fires the intent in the same synchronous click handler. Consuming the
+  // chip inside the event listener would run `pickChip` before React commits
+  // that config change, so the composer would seed its design-system field from
+  // the stale (empty) default — showing "No design system" for the brand. We
+  // therefore only bump a tick from the listener and consume the chip in a
+  // separate effect: by the time that effect runs, the re-render has landed and
+  // `defaultDesignSystemTitle` reflects the freshly-applied brand.
+  const [chipIntentTick, setChipIntentTick] = useState(0);
   useEffect(() => {
-    function applyPendingChip() {
-      if (plugins.length === 0) return;
-      const chipId = consumePendingHomeChip();
-      if (!chipId) return;
-      const chip = findChip(chipId);
-      if (chip) pickChip(chip);
+    function bumpChipIntent() {
+      setChipIntentTick((tick) => tick + 1);
     }
-    applyPendingChip();
-    window.addEventListener(HOME_CHIP_INTENT_EVENT, applyPendingChip);
-    return () => window.removeEventListener(HOME_CHIP_INTENT_EVENT, applyPendingChip);
-    // pickChip is recreated each render but only needs the current plugin
-    // catalog; re-subscribing on `plugins` keeps the closure fresh enough.
+    window.addEventListener(HOME_CHIP_INTENT_EVENT, bumpChipIntent);
+    return () => window.removeEventListener(HOME_CHIP_INTENT_EVENT, bumpChipIntent);
+  }, []);
+  useEffect(() => {
+    // Guard on the plugin catalog being loaded — chip dispatch resolves a
+    // bundled plugin — and re-run when `plugins` arrives so an intent queued
+    // before the catalog loaded is still honored once it does.
+    if (plugins.length === 0) return;
+    const chipId = consumePendingHomeChip();
+    if (!chipId) return;
+    const chip = findChip(chipId);
+    if (chip) pickChip(chip);
+    // pickChip / defaultDesignSystemTitle are recreated each render; this effect
+    // runs after the commit that bumped the tick, so the closure it captures
+    // already reflects the latest default design system.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plugins]);
+  }, [plugins, chipIntentTick]);
 
   async function submit() {
     const trimmed = prompt.trim();
