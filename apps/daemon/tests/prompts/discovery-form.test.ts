@@ -75,3 +75,58 @@ describe('discovery.ts task-type form (single-shot brief)', () => {
     );
   });
 });
+
+describe('discovery.ts delivery contract guard', () => {
+  it('requires a visible delivery contract for complex scoped work', () => {
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('### Delivery contract v0');
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('scope-risk signal');
+    for (const trigger of [
+      '`all pages`',
+      '`complete flow`',
+      '`PRD`',
+      '`existing project`',
+      '`continue`',
+      '`redesign`',
+      'platform migration',
+      'export to PPT/PDF/DOCX',
+      'design-system workspace',
+      'multi-screen',
+      'multi-file output',
+    ]) {
+      expect(DISCOVERY_AND_PHILOSOPHY).toContain(trigger);
+    }
+  });
+
+  it('locks the delivery contract fields needed for scope and follow-up guards', () => {
+    for (const field of [
+      'Known:',
+      'Assumed:',
+      'Needs confirmation:',
+      'Blocked sources:',
+      'Deliverables:',
+      'Non-goals:',
+    ]) {
+      expect(DISCOVERY_AND_PHILOSOPHY).toContain(field);
+    }
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('expected counts');
+  });
+
+  it('keeps vague briefs non-blocking while refusing to invent full scope', () => {
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('Do not invent a complete scope');
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain(
+      'I will proceed with these assumptions unless you redirect',
+    );
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('ask one concise question or define a smaller milestone');
+  });
+
+  it('forces TodoWrite items to derive from the delivery contract', () => {
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain(
+      'TodoWrite must be derived from the contract',
+    );
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('Check 8/8 deliverables covered');
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('3/10 screens completed');
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain(
+      'still create the non-blocking contract and proceed under its assumptions',
+    );
+  });
+});

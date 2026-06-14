@@ -78,6 +78,28 @@ describe('DISCOVERY_AND_PHILOSOPHY (contracts copy) — prompt routing parity', 
       'If this turn only edited an existing HTML file',
     );
   });
+
+  it('keeps the delivery contract guard in the contracts prompt copy', () => {
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('### Delivery contract v0');
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('scope-risk signal');
+    for (const field of [
+      'Known:',
+      'Assumed:',
+      'Needs confirmation:',
+      'Blocked sources:',
+      'Deliverables:',
+      'Non-goals:',
+    ]) {
+      expect(DISCOVERY_AND_PHILOSOPHY).toContain(field);
+    }
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain(
+      'TodoWrite must be derived from the contract',
+    );
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('Check 8/8 deliverables covered');
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain(
+      'I will proceed with these assumptions unless you redirect',
+    );
+  });
 });
 
 describe('composeSystemPrompt', () => {
