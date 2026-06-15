@@ -453,7 +453,10 @@ test('[P0] @critical edited HTML file restores selected tab, source, and preview
   await openDesignFile(page, 'secondary-preview.html');
   await expect(tabBySuffix(page, 'secondary-preview.html')).toHaveAttribute('aria-selected', 'true');
 
-  await page.goto(`/projects/${projectId}/files/restore-edit.html`);
+  await page
+    .getByRole('tablist', { name: 'Design Files' })
+    .getByRole('tab', { name: /^Design Files$/ })
+    .click();
   await openDesignFile(page, 'restore-edit.html');
 
   const restoreTab = tabBySuffix(page, 'restore-edit.html');
@@ -662,18 +665,11 @@ async function seedDeckArtifact(
 
 async function openDesignFile(page: Page, fileName: string) {
   const preview = artifactPreview(page);
-  try {
-    await preview.waitFor({ state: 'visible', timeout: 5_000 });
-    return;
-  } catch {
-    // Not yet visible; try opening via tab or file list
-  }
-
   const filePattern = new RegExp(fileName.replace(/\./g, '\\.'), 'i');
   const fileTabButton = page.getByRole('tab', { name: filePattern }).first();
   let tabFound = true;
   try {
-    await fileTabButton.waitFor({ state: 'visible', timeout: 2_000 });
+    await fileTabButton.waitFor({ state: 'visible', timeout: 5_000 });
   } catch {
     tabFound = false;
   }
