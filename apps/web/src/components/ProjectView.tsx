@@ -6266,10 +6266,10 @@ export function findExistingArtifactProjectFile(
     const pointerTarget = resolveHtmlPointerArtifactTarget({
       content: art.html,
       candidateFileName,
-      projectFiles,
+      projectFiles: currentRunFiles,
     });
     const pointerFile = pointerTarget
-      ? projectFiles.find((file) => file.name === pointerTarget || file.path === pointerTarget)
+      ? currentRunFiles.find((file) => file.name === pointerTarget || file.path === pointerTarget)
       : null;
     if (pointerFile) return pointerFile;
   }

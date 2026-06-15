@@ -191,7 +191,7 @@ describe('terminal replay artifact recovery', () => {
       .toBe(current);
   });
 
-  it('reuses html pointer targets even when the target predates the current run', () => {
+  it('only reuses html pointer targets created at or after the current run started', () => {
     const runCreatedAt = 1_000;
     const pointerArtifact: Artifact = {
       identifier: 'real-daemon-smoke',
@@ -199,15 +199,23 @@ describe('terminal replay artifact recovery', () => {
       title: 'Real Daemon Smoke',
       html: 'See index.html',
     };
-    const existingTarget = projectFile('index.html', 'html', runCreatedAt - 1);
+    const staleTarget = projectFile('index.html', 'html', runCreatedAt - 1);
+    const currentTarget = projectFile('index.html', 'html', runCreatedAt + 1);
 
     expect(
       findExistingArtifactProjectFile(
         pointerArtifact,
-        [existingTarget],
+        [staleTarget],
         { minMtime: runCreatedAt },
       ),
-    ).toBe(existingTarget);
+    ).toBeNull();
+    expect(
+      findExistingArtifactProjectFile(
+        pointerArtifact,
+        [staleTarget, currentTarget],
+        { minMtime: runCreatedAt },
+      ),
+    ).toBe(currentTarget);
   });
 
   it('treats standalone HTML terminal assistant messages as recoverable', () => {
