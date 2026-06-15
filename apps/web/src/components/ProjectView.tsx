@@ -1079,13 +1079,6 @@ export function ProjectView({
   // last name we persisted so re-renders during streaming don't spawn
   // duplicate writes.
   const savedArtifactRef = useRef<string | null>(null);
-  // Pending Write tool invocations: tool_use_id -> destination basename.
-  // When the matching tool_result lands we refresh the file list and open
-  // the file as a tab once. Keying off the tool_use_id (rather than
-  // diffing the file list at end-of-turn) lets us auto-open the moment
-  // the agent's Write actually completes, without the previous synthetic
-  // "live" tab that was causing flicker against manual opens.
-  const pendingWritesRef = useRef<Map<string, string>>(new Map());
   // Track which conversation the current messages belong to, so we can
   // correctly gate new-conversation creation even during async loads.
   const messagesConversationIdRef = useRef<string | null>(null);
@@ -1321,7 +1314,6 @@ export function ProjectView({
     setAudioVoiceOptionsError(null);
     setArtifact(null);
     savedArtifactRef.current = null;
-    pendingWritesRef.current.clear();
     (async () => {
       try {
         const list = await listConversations(project.id);
@@ -1425,7 +1417,6 @@ export function ProjectView({
     streamingConversationIdRef.current = null;
     setStreamingConversationId(null);
     savedArtifactRef.current = null;
-    pendingWritesRef.current.clear();
     if (messagesConversationIdRef.current !== activeConversationId) {
       messagesConversationIdRef.current = null;
     }
@@ -1443,7 +1434,6 @@ export function ProjectView({
         setArtifact(null);
         setError(null);
         savedArtifactRef.current = null;
-        pendingWritesRef.current.clear();
         messagesConversationIdRef.current = activeConversationId;
         setMessagesConversationId(activeConversationId);
         setFailedMessagesConversationId(null);
@@ -1456,7 +1446,6 @@ export function ProjectView({
         setArtifact(null);
         setError(message);
         savedArtifactRef.current = null;
-        pendingWritesRef.current.clear();
         messagesConversationIdRef.current = null;
         setMessagesConversationId(null);
         setFailedMessagesConversationId(activeConversationId);
@@ -3251,8 +3240,13 @@ export function ProjectView({
       // agent finishes and surface anything new (e.g. a generated .pptx)
       // as download chips on the assistant message.
       const beforeFileNames = new Set(preTurnFileNames);
+      // Pending Write/Edit tool invocations for this run: tool_use_id -> path.
+      // Keeping this local prevents a superseded stream's late tool_result from
+      // consuming a replacement run's colliding tool id.
+      const pendingWrites = new Map<string, string>();
       const traceTouchedFilePaths = new Set<string>();
       const clearTraceTouchedFilePaths = () => {
+        pendingWrites.clear();
         traceTouchedFilePaths.clear();
       };
 
@@ -3328,13 +3322,13 @@ export function ProjectView({
             // Reducing to a basename here would lose the segment alignment
             // we need to disambiguate same-basename collisions across the
             // project tree and outside it.
-            pendingWritesRef.current.set(ev.id, filePath);
+            pendingWrites.set(ev.id, filePath);
           }
         }
         if (ev.kind === 'tool_result') {
-          const filePath = pendingWritesRef.current.get(ev.toolUseId);
+          const filePath = pendingWrites.get(ev.toolUseId);
           if (filePath) {
-            pendingWritesRef.current.delete(ev.toolUseId);
+            pendingWrites.delete(ev.toolUseId);
             if (!ev.isError) {
               traceTouchedFilePaths.add(filePath);
               // Refresh first so FileWorkspace's file list (and the tab

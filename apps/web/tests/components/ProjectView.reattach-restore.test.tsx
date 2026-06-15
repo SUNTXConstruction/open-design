@@ -39,6 +39,7 @@ const chatPaneHarness = vi.hoisted(() => ({
     commentAttachments?: unknown[],
     meta?: unknown,
   ) => unknown),
+  onStop: null as null | (() => void),
 }));
 
 vi.mock('../../src/i18n', () => ({
@@ -110,8 +111,15 @@ vi.mock('../../src/components/AvatarMenu', () => ({
 }));
 
 vi.mock('../../src/components/ChatPane', () => ({
-  ChatPane: ({ onSend }: { onSend: typeof chatPaneHarness.onSend }) => {
+  ChatPane: ({
+    onSend,
+    onStop,
+  }: {
+    onSend: typeof chatPaneHarness.onSend;
+    onStop: typeof chatPaneHarness.onStop;
+  }) => {
     chatPaneHarness.onSend = onSend;
+    chatPaneHarness.onStop = onStop;
     return null;
   },
 }));
@@ -264,6 +272,7 @@ describe('ProjectView daemon reattach restore', () => {
     cleanup();
     vi.clearAllMocks();
     chatPaneHarness.onSend = null;
+    chatPaneHarness.onStop = null;
     window.sessionStorage.clear();
   });
 
@@ -712,6 +721,98 @@ describe('ProjectView daemon reattach restore', () => {
     resolveFirstFinalRefresh!(projectFiles);
     await Promise.resolve();
     resolveSecondFinalRefresh!(projectFiles);
+
+    await waitFor(() => {
+      const secondRunFinal = saveMessage.mock.calls
+        .map((call) => call[2] as ChatMessage)
+        .filter((m) => m?.runId === 'run-second' && Array.isArray(m.traceObjectFiles))
+        .at(-1);
+      expect(secondRunFinal?.traceObjectFiles?.map((file) => file.name)).toEqual(['second.html']);
+    });
+  });
+
+  it('keeps replacement touched files when a superseded run emits a late colliding tool result', async () => {
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+
+    const projectFiles = [
+      { name: 'first.html', path: 'first.html', size: 10, mtime: 1, kind: 'html', mime: 'text/html' },
+      { name: 'second.html', path: 'second.html', size: 10, mtime: 1, kind: 'html', mime: 'text/html' },
+    ];
+    fetchProjectFiles.mockResolvedValue(projectFiles);
+
+    let firstHandlers: {
+      onAgentEvent: (ev: unknown) => void;
+    } | null = null;
+    let secondHandlers: {
+      onAgentEvent: (ev: unknown) => void;
+      onDelta: (text: string) => void;
+      onDone: (text?: string) => void;
+    } | null = null;
+
+    streamViaDaemon
+      .mockImplementationOnce(async (options: any) => {
+        options.onRunCreated('run-first');
+        firstHandlers = options.handlers;
+        options.handlers.onAgentEvent({
+          kind: 'tool_use',
+          id: 'tool-collide',
+          name: 'str_replace_edit',
+          input: { path: 'first.html' },
+        });
+        return new Promise<void>(() => {});
+      })
+      .mockImplementationOnce(async (options: any) => {
+        options.onRunCreated('run-second');
+        secondHandlers = options.handlers;
+        options.handlers.onAgentEvent({
+          kind: 'tool_use',
+          id: 'tool-collide',
+          name: 'str_replace_edit',
+          input: { path: 'second.html' },
+        });
+        return new Promise<void>(() => {});
+      });
+
+    renderProjectView();
+    await waitFor(() => expect(chatPaneHarness.onSend).toBeTruthy());
+    await waitFor(() => expect(chatPaneHarness.onStop).toBeTruthy());
+
+    void chatPaneHarness.onSend!('first run', [], []);
+    await waitFor(() => expect(firstHandlers).toBeTruthy());
+
+    chatPaneHarness.onStop!();
+    await waitFor(() => {
+      const stopped = saveMessage.mock.calls
+        .map((call) => call[2] as ChatMessage)
+        .find((m) => m?.runId === 'run-first' && m.runStatus === 'canceled');
+      expect(stopped).toBeTruthy();
+    });
+
+    void chatPaneHarness.onSend!('second run', [], []);
+    await waitFor(() => expect(secondHandlers).toBeTruthy());
+
+    firstHandlers!.onAgentEvent({
+      kind: 'tool_result',
+      toolUseId: 'tool-collide',
+      content: '',
+      isError: false,
+    });
+    secondHandlers!.onAgentEvent({
+      kind: 'tool_result',
+      toolUseId: 'tool-collide',
+      content: '',
+      isError: false,
+    });
+    secondHandlers!.onDelta('second done');
+    secondHandlers!.onDone('second done');
 
     await waitFor(() => {
       const secondRunFinal = saveMessage.mock.calls
