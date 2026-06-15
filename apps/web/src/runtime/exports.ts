@@ -998,8 +998,11 @@ export async function exportAsPdf(
   // popup.
   if (sandboxedPreview) {
     doc = buildSandboxedPreviewDocument(doc, title, { allowModals: true });
-    doc = injectParentPrintReadyCache(doc, nonce);
   }
+  // Even in the non-sandboxed browser fallback we keep the same readiness
+  // cache contract as the desktop bridge so the popup can wait for actual
+  // rendered content instead of printing after a blind fixed delay.
+  doc = injectParentPrintReadyCache(doc, nonce);
   doc = injectPrintScript(doc, title);
 
   const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
@@ -1034,10 +1037,11 @@ export async function exportAsPdf(
 
 function injectPrintScript(doc: string, title: string): string {
   const safeTitle = JSON.stringify(title || 'artifact');
-  // setTimeout gives stylesheets and images one tick to settle before the
-  // print dialog measures the page; without it some print previews come
-  // out blank in Chrome.
-  const script = `<script>try{document.title=${safeTitle}}catch(e){}window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print()}catch(e){}},300)})</script>`;
+  // Browser fallback PDF export shares the same print-readiness signal as the
+  // desktop native path. When the cache is present, wait for it so the popup
+  // prints only after fonts, images, CSS image URLs, and final layout have
+  // settled; otherwise fall back to the historical load+delay behavior.
+  const script = `<script>(function(){try{document.title=${safeTitle}}catch(e){}function doPrint(){try{window.focus();window.print()}catch(e){}}function afterStableFrames(fn){requestAnimationFrame(function(){requestAnimationFrame(fn)})}window.addEventListener('load',function(){if(typeof window.__odPrintReady!=='boolean'){setTimeout(doPrint,300);return}var deadline=Date.now()+30000;(function waitForReady(){if(window.__odPrintReady===true){afterStableFrames(doPrint);return}if(Date.now()>=deadline){afterStableFrames(doPrint);return}setTimeout(waitForReady,50)})()})})();</script>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
   if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
   return doc + script;

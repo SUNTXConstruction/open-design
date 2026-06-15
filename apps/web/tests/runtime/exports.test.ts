@@ -503,6 +503,20 @@ describe('sandboxed preview Blob exports', () => {
     expect(wrapper).toContain('page-break-after: always;');
   });
 
+  it('waits for the injected print-ready cache before calling window.print() in the browser fallback', async () => {
+    await exportAsPdf('<div><img src="https://example.com/slow.png" alt="slow"/></div>', 'Ready PDF');
+
+    expect(capturedBlob).toBeDefined();
+    const wrapper = await capturedBlob!.text();
+    expect(wrapper).toContain('__odPrintReady');
+    expect(wrapper).toContain("window.__odPrintReady===true");
+    expect(wrapper).toContain("e.data.type==='OD_PRINT_READY'");
+    expect(wrapper).toContain('window.addEventListener(\'message\'');
+    expect(wrapper).toContain('document.fonts');
+    expect(wrapper).toContain('waitForCssBackgroundImages');
+    expect(wrapper).toContain('window.print()');
+  });
+
   it('allows explicit trusted PDF opt-out without changing the secure default', async () => {
     await exportAsPdf('<main>Trusted local document</main>', 'Trusted PDF', {
       sandboxedPreview: false,
@@ -515,6 +529,8 @@ describe('sandboxed preview Blob exports', () => {
     const doc = await capturedBlob!.text();
     expect(doc).not.toContain('sandbox="allow-scripts allow-modals"');
     expect(doc).toContain('<main>Trusted local document</main>');
+    expect(doc).toContain('__odPrintReady');
+    expect(doc).toContain("window.__odPrintReady===true");
   });
 
   it('shows an alert and revokes the blob URL when the popup is blocked', async () => {
