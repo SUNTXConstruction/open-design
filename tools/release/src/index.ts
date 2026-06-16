@@ -45,6 +45,12 @@ cli
   });
 
 cli
+  .command("prepare-github-assets", "Prepare the public GitHub Release asset set")
+  .action(async () => {
+    await import("./storage/prepare-github-assets.ts");
+  });
+
+cli
   .command("download-platform-manifest", "Download one platform manifest from release storage")
   .action(async () => {
     await import("./storage/download-platform-manifest.ts");

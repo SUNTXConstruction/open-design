@@ -12,10 +12,13 @@ on:
         required: false
         type: string
       dry_run:
-        description: "Validate release inputs and read-only remote gates without building or publishing."
+        description: "Dry-run boundary to validate. metadata stops after promotion metadata; prepublish runs build/smoke/report/plan without publishing."
         required: false
-        type: boolean
-        default: true
+        type: choice
+        options:
+          - metadata
+          - prepublish
+        default: metadata
       ref:
         description: "Optional git ref (branch/tag/SHA) to build. Empty builds the ref this workflow was dispatched on."
         required: false
@@ -33,10 +36,10 @@ on:
         type: string
         default: ""
       dry_run:
-        description: "Validate release inputs and read-only remote gates without building or publishing."
+        description: "Dry-run boundary to validate: metadata or prepublish."
         required: false
-        type: boolean
-        default: true
+        type: string
+        default: "metadata"
       ref:
         description: "Optional git ref (branch/tag/SHA) to build. Empty builds the caller's ref."
         required: false
@@ -56,8 +59,11 @@ on:
         description: "The commit SHA that was built."
         value: ${{ jobs.metadata.outputs.commit }}
       dry_run:
-        description: "Whether this run stopped after metadata/preflight validation."
+        description: "Whether this run is a dry-run."
         value: ${{ jobs.metadata.outputs.dry_run }}
+      dry_run_mode:
+        description: "The stable dry-run boundary: metadata or prepublish."
+        value: ${{ jobs.metadata.outputs.dry_run_mode }}
       previous_commit:
         description: "Commit SHA of the previously published prerelease (changelog baseline); empty on cold start."
         value: ${{ jobs.metadata.outputs.previous_commit }}
@@ -82,7 +88,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: open-design-release-stable-${{ inputs.dry_run && 'dry-run' || 'publish' }}
+  group: open-design-release-stable-${{ inputs.dry_run }}
   cancel-in-progress: false
 
 env:
@@ -133,15 +139,18 @@ jobs:
       channel: ${{ steps.stable.outputs.channel }}
       commit: ${{ steps.stable.outputs.commit }}
       dry_run: ${{ steps.stable.outputs.dry_run }}
+      dry_run_mode: ${{ steps.stable.outputs.dry_run_mode }}
       github_release_enabled: ${{ steps.stable.outputs.github_release_enabled }}
       linux_namespace: ${{ steps.stable.outputs.linux_namespace }}
       mac_intel_namespace: ${{ steps.stable.outputs.mac_intel_namespace }}
       namespace: ${{ steps.stable.outputs.namespace }}
+      publish_side_effects_enabled: ${{ steps.stable.outputs.publish_side_effects_enabled }}
       prerelease_number: ${{ steps.stable.outputs.prerelease_number }}
       previous_stable: ${{ steps.stable.outputs.previous_stable }}
       previous_commit: ${{ steps.prev.outputs.previous_commit }}
       release_name: ${{ steps.stable.outputs.release_name }}
       release_version: ${{ steps.stable.outputs.release_version }}
+      run_prepublish_jobs: ${{ steps.stable.outputs.run_prepublish_jobs }}
       stable_version: ${{ steps.stable.outputs.stable_version }}
       state_source: ${{ steps.stable.outputs.state_source }}
       version_tag: ${{ steps.stable.outputs.version_tag }}
@@ -192,7 +201,7 @@ jobs:
         run: pnpm exec tools-release prepare stable
 
       - name: Validate R2 release access
-        if: ${{ steps.stable.outputs.dry_run != 'true' }}
+        if: ${{ steps.stable.outputs.publish_side_effects_enabled == 'true' }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_RELEASES_AK }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_RELEASES_SK }}
@@ -208,7 +217,7 @@ jobs:
   verify:
     name: Verify build (typecheck + tests)
     needs: metadata
-    if: ${{ needs.metadata.outputs.dry_run != 'true' }}
+    if: ${{ needs.metadata.outputs.run_prepublish_jobs == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -261,6 +270,7 @@ jobs:
   build_mac:
     name: Build release mac arm64
     needs: [metadata, verify]
+    if: ${{ needs.metadata.outputs.run_prepublish_jobs == 'true' }}
     runs-on: macos-14
     env:
       GH_TOKEN: ${{ github.token }}
@@ -481,6 +491,8 @@ jobs:
           RELEASE_BRANCH: ${{ needs.metadata.outputs.branch }}
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
           RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+          RELEASE_DRY_RUN_MODE: ${{ needs.metadata.outputs.dry_run_mode }}
+          RELEASE_PUBLISH_SIDE_EFFECTS: ${{ needs.metadata.outputs.publish_side_effects_enabled }}
           RELEASE_MANIFEST_DIR: ${{ runner.temp }}/release-platform-manifests
           RELEASE_OUTPUTS_PATH: ${{ runner.temp }}/release-platform-outputs/mac_arm64.json
           RELEASE_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
@@ -514,6 +526,7 @@ jobs:
   build_mac_intel:
     name: Build release mac intel x64
     needs: [metadata, verify]
+    if: ${{ needs.metadata.outputs.run_prepublish_jobs == 'true' }}
     runs-on: macos-15-intel
     env:
       GH_TOKEN: ${{ github.token }}
@@ -594,6 +607,8 @@ jobs:
           RELEASE_BRANCH: ${{ needs.metadata.outputs.branch }}
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
           RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+          RELEASE_DRY_RUN_MODE: ${{ needs.metadata.outputs.dry_run_mode }}
+          RELEASE_PUBLISH_SIDE_EFFECTS: ${{ needs.metadata.outputs.publish_side_effects_enabled }}
           RELEASE_MANIFEST_DIR: ${{ runner.temp }}/release-platform-manifests
           RELEASE_OUTPUTS_PATH: ${{ runner.temp }}/release-platform-outputs/mac_x64.json
           RELEASE_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
@@ -625,6 +640,7 @@ jobs:
   build_win:
     name: Build release win x64
     needs: [metadata, verify]
+    if: ${{ needs.metadata.outputs.run_prepublish_jobs == 'true' }}
     runs-on: windows-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -816,6 +832,8 @@ jobs:
           RELEASE_BRANCH: ${{ needs.metadata.outputs.branch }}
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
           RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+          RELEASE_DRY_RUN_MODE: ${{ needs.metadata.outputs.dry_run_mode }}
+          RELEASE_PUBLISH_SIDE_EFFECTS: ${{ needs.metadata.outputs.publish_side_effects_enabled }}
           RELEASE_MANIFEST_DIR: ${{ runner.temp }}\release-platform-manifests
           RELEASE_OUTPUTS_PATH: ${{ runner.temp }}\release-platform-outputs\win_x64.json
           RELEASE_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
@@ -852,7 +870,7 @@ jobs:
     # Linux AppImage packaging is temporarily excluded from stable releases.
     # Keep the job definition in place so the Linux lane can be re-enabled once
     # the containerized pnpm bootstrap is fixed and reviewed.
-    if: ${{ vars.ENABLE_STABLE_LINUX == 'true' }}
+    if: ${{ needs.metadata.outputs.run_prepublish_jobs == 'true' && vars.ENABLE_STABLE_LINUX == 'true' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -965,6 +983,8 @@ jobs:
           RELEASE_BRANCH: ${{ needs.metadata.outputs.branch }}
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
           RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+          RELEASE_DRY_RUN_MODE: ${{ needs.metadata.outputs.dry_run_mode }}
+          RELEASE_PUBLISH_SIDE_EFFECTS: ${{ needs.metadata.outputs.publish_side_effects_enabled }}
           RELEASE_MANIFEST_DIR: ${{ runner.temp }}/release-platform-manifests
           RELEASE_OUTPUTS_PATH: ${{ runner.temp }}/release-platform-outputs/linux_x64.json
           RELEASE_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
@@ -995,7 +1015,7 @@ jobs:
           retention-days: 1
 
   publish:
-    name: Publish ${{ needs.metadata.outputs.channel }} release
+    name: Finalize ${{ needs.metadata.outputs.channel }} release plan
     needs:
       - metadata
       - verify
@@ -1007,7 +1027,7 @@ jobs:
       ${{
         always() &&
         !cancelled() &&
-        needs.metadata.outputs.dry_run != 'true' &&
+        needs.metadata.outputs.run_prepublish_jobs == 'true' &&
         needs.metadata.result == 'success' &&
         needs.verify.result == 'success' &&
         needs.build_mac.result == 'success' &&
@@ -1062,6 +1082,14 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.33.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Download mac publish manifest
         uses: actions/download-artifact@v8
@@ -1145,6 +1173,20 @@ jobs:
           name: open-design-release-win-e2e-report
           path: ${{ runner.temp }}/release-report/win
 
+      - name: Prepare stable GitHub Release asset plan
+        env:
+          ENABLE_LINUX_X64: ${{ needs.build_linux.result == 'success' }}
+          RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
+          RELEASE_GITHUB_ASSETS_DIR: ${{ runner.temp }}/github-release-assets
+          RELEASE_GITHUB_ASSETS_SOURCE_DIR: ${{ runner.temp }}/release-assets
+          RELEASE_OUTPUTS_PATH: ${{ runner.temp }}/github-release-assets-plan/outputs.json
+          RELEASE_SUMMARY_PATH: ${{ runner.temp }}/github-release-assets-plan/summary.md
+          RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
+        run: pnpm exec tools-release prepare-github-assets
+
+      - name: Publish GitHub Release asset plan summary
+        run: cat "${{ runner.temp }}/github-release-assets-plan/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Write stable release notes
         id: notes
         if: ${{ needs.metadata.outputs.github_release_enabled == 'true' }}
@@ -1167,30 +1209,9 @@ jobs:
         if: ${{ needs.metadata.outputs.github_release_enabled == 'true' }}
         run: |
           set -euo pipefail
-          all_release_dir="$RUNNER_TEMP/release-assets/all"
-          mkdir -p "$all_release_dir"
-          cp "$RUNNER_TEMP/release-assets/mac"/* "$all_release_dir/"
-          cp "$RUNNER_TEMP/release-assets/mac-intel"/* "$all_release_dir/"
-          cp "$RUNNER_TEMP/release-assets/win"/* "$all_release_dir/"
-          if [ "$ENABLE_LINUX" = "true" ]; then
-            cp "$RUNNER_TEMP/release-assets/linux"/* "$all_release_dir/"
-          fi
-          gh release upload "$VERSION_TAG" "$all_release_dir"/*
+          gh release upload "$VERSION_TAG" "$RUNNER_TEMP/github-release-assets"/*
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10.33.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Publish release metadata to R2
+      - name: Prepare release metadata
         env:
           BASE_VERSION: ${{ needs.metadata.outputs.base_version }}
           ENABLE_LINUX_X64: ${{ needs.build_linux.result == 'success' }}
@@ -1204,6 +1225,8 @@ jobs:
           RELEASE_BRANCH: ${{ needs.metadata.outputs.branch }}
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
           RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+          RELEASE_DRY_RUN_MODE: ${{ needs.metadata.outputs.dry_run_mode }}
+          RELEASE_PUBLISH_SIDE_EFFECTS: ${{ needs.metadata.outputs.publish_side_effects_enabled }}
           RELEASE_MANIFEST_DIR: ${{ runner.temp }}/release-platform-manifests
           RELEASE_METADATA_DIR: ${{ runner.temp }}/release-metadata
           RELEASE_OUTPUTS_PATH: ${{ runner.temp }}/release-metadata/outputs.json
@@ -1243,8 +1266,10 @@ jobs:
           LINUX_X64_RESULT: ${{ needs.build_linux.result }}
           MAC_ARM64_RESULT: ${{ needs.build_mac.result }}
           MAC_X64_RESULT: ${{ needs.build_mac_intel.result }}
+          RELEASE_DRY_RUN_MODE: ${{ needs.metadata.outputs.dry_run_mode }}
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
           RELEASE_METADATA_URL: ${{ steps.outputs.outputs.version_metadata_url }}
+          RELEASE_METADATA_PATH: ${{ needs.metadata.outputs.publish_side_effects_enabled == 'true' && '' || format('{0}/release-metadata/metadata.json', runner.temp) }}
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           WIN_X64_RESULT: ${{ needs.build_win.result }}
         run: pnpm exec tools-release verify-metadata
@@ -1270,6 +1295,7 @@ jobs:
         env:
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
           RELEASE_METADATA_URL: ${{ steps.outputs.outputs.version_metadata_url }}
+          RELEASE_METADATA_PATH: ${{ needs.metadata.outputs.publish_side_effects_enabled == 'true' && '' || format('{0}/release-metadata/metadata.json', runner.temp) }}
           RELEASE_SUMMARY_PATH: ${{ runner.temp }}/release-metadata/summary.md
         run: |
           pnpm exec tools-release summary-metadata

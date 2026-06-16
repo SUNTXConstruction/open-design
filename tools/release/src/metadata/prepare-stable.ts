@@ -56,6 +56,8 @@ type ReleaseNamespaces = {
   win: string;
 };
 
+type StableDryRunMode = "metadata" | "prepublish" | "";
+
 function fail(message: string): never {
   console.error(`[release-stable] ${message}`);
   process.exit(1);
@@ -83,10 +85,11 @@ function parseChannel(value: string | undefined): ReleaseChannel {
   return descriptor.channel;
 }
 
-function parseBooleanInput(value: string | undefined, name: string): boolean {
-  if (value == null || value.length === 0 || value === "false") return false;
-  if (value === "true") return true;
-  fail(`${name} must be true or false; got ${value}`);
+function parseStableDryRunMode(value: string | undefined): StableDryRunMode {
+  if (value == null || value.length === 0 || value === "false") return "";
+  if (value === "true" || value === "metadata") return "metadata";
+  if (value === "prepublish") return "prepublish";
+  fail("OPEN_DESIGN_RELEASE_DRY_RUN must be metadata, prepublish, true, or false");
 }
 
 function parseStableVersionInput(value: string | undefined, sourceName: string): ParsedStableVersion | null {
@@ -505,7 +508,10 @@ function setOutput(name: string, value: string): void {
 
 const repository = process.env.GITHUB_REPOSITORY ?? fail("GITHUB_REPOSITORY is required");
 const channel = parseChannel(process.env.OPEN_DESIGN_RELEASE_CHANNEL);
-const dryRun = parseBooleanInput(process.env.OPEN_DESIGN_RELEASE_DRY_RUN, "OPEN_DESIGN_RELEASE_DRY_RUN");
+const stableDryRunMode = channel === "stable" ? parseStableDryRunMode(process.env.OPEN_DESIGN_RELEASE_DRY_RUN) : "";
+const dryRun = stableDryRunMode.length > 0;
+const runPrepublishJobs = channel !== "stable" || stableDryRunMode === "prepublish" || stableDryRunMode === "";
+const publishSideEffectsEnabled = channel !== "stable" || stableDryRunMode === "";
 const namespaces = releaseNamespaces(channel);
 const packagedVersion = await readPackagedVersion();
 const commit = process.env.GITHUB_SHA ?? "";
@@ -605,6 +611,7 @@ log(`base version: ${packagedVersion}`);
 log(`release version: ${releaseVersion}`);
 log(`namespace: ${namespaces.mac}`);
 log(`dry run: ${String(dryRun)}`);
+if (channel === "stable" && stableDryRunMode.length > 0) log(`dry run mode: ${stableDryRunMode}`);
 if (channel === "stable") log(`version tag: ${versionTag}`);
 log(`state source: ${stateSource}`);
 if (latestStable != null) log(`previous stable: ${latestStable.value}`);
@@ -614,15 +621,18 @@ setOutput("branch", branch);
 setOutput("channel", channel);
 setOutput("commit", commit);
 setOutput("dry_run", dryRun ? "true" : "false");
-setOutput("github_release_enabled", channel === "stable" ? "true" : "false");
+setOutput("dry_run_mode", stableDryRunMode);
+setOutput("github_release_enabled", channel === "stable" && publishSideEffectsEnabled ? "true" : "false");
 setOutput("linux_namespace", namespaces.linux);
 setOutput("mac_intel_namespace", namespaces.macIntel);
 setOutput("namespace", namespaces.mac);
+setOutput("publish_side_effects_enabled", publishSideEffectsEnabled ? "true" : "false");
 setOutput("prerelease_number", prereleaseNumber);
 setOutput("previous_stable", latestStable?.value ?? "");
 setOutput("release_number", prereleaseNumber);
 setOutput("release_name", releaseName);
 setOutput("release_version", releaseVersion);
+setOutput("run_prepublish_jobs", runPrepublishJobs ? "true" : "false");
 setOutput("stable_version", packagedVersion);
 setOutput("state_source", stateSource);
 setOutput("version_tag", channel === "stable" ? versionTag : "");

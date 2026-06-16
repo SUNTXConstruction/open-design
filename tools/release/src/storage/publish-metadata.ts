@@ -50,7 +50,6 @@ type TargetDef = {
   target: "mac_arm64" | "mac_x64" | "win_x64" | "linux_x64";
 };
 
-const storage = storageConfigFromEnv();
 const releaseChannel = releaseChannelDescriptor(required("RELEASE_CHANNEL")).channel;
 const countedReleaseChannel = releaseChannel === "stable" ? null : releaseChannel;
 const releaseVersion = required("RELEASE_VERSION");
@@ -59,6 +58,8 @@ const metadataDir = required("RELEASE_METADATA_DIR");
 const manifestDir = required("RELEASE_MANIFEST_DIR");
 const outputsPath = required("RELEASE_OUTPUTS_PATH");
 const requestedAssetVersionSuffix = optional("RELEASE_ASSET_SUFFIX");
+const dryRunMode = optional("RELEASE_DRY_RUN_MODE");
+const publishSideEffectsEnabled = optional("RELEASE_PUBLISH_SIDE_EFFECTS", "true") !== "false";
 const latestPrefix = `${releaseChannel}/latest`;
 const currentCommit = optional("RELEASE_COMMIT");
 const currentRunId = Number(optional("RELEASE_RUN_ID", "0"));
@@ -68,11 +69,13 @@ const versionLockKey = optional(
   countedReleaseChannel == null ? "" : versionLockObjectKey(releaseVersion, countedReleaseChannel),
 );
 const latestCasRequired = process.env.RELEASE_LATEST_CAS_REQUIRED === "true";
+const storage = publishSideEffectsEnabled || versionLockRequired ? storageConfigFromEnv() : null;
 
 if (versionLockRequired) {
   if (countedReleaseChannel == null) {
     throw new Error("stable releases do not use counted version reservations");
   }
+  if (storage == null) throw new Error("storage config is required for version reservation validation");
   await assertCurrentVersionReservation(storage, releaseVersion, versionLockKey, countedReleaseChannel);
   console.log(`verified ${countedReleaseChannel} version reservation ${versionLockKey}`);
 }
@@ -123,6 +126,11 @@ function compareReleaseVersions(left: string, right: string): number {
 }
 
 async function upload(path: string, objectKey: string, cacheControl: string, type = "application/json; charset=utf-8"): Promise<void> {
+  if (!publishSideEffectsEnabled) {
+    console.log(`[dry-run:${dryRunMode || "plan"}] would upload ${path} to ${objectKey}`);
+    return;
+  }
+  if (storage == null) throw new Error("storage config is required to upload release metadata");
   await putStorageObject({
     ...storage,
     bodyPath: path,
@@ -133,6 +141,7 @@ async function upload(path: string, objectKey: string, cacheControl: string, typ
 }
 
 async function uploadLatestMetadataWithCas(path: string, objectKey: string): Promise<void> {
+  if (storage == null) throw new Error("storage config is required to publish latest metadata");
   if (!latestCasRequired) {
     await upload(path, objectKey, "public, max-age=60, must-revalidate");
     return;
@@ -186,6 +195,7 @@ async function uploadLatestMetadataWithCas(path: string, objectKey: string): Pro
 }
 
 async function publishLatestPlatformObjects(manifests: Record<string, PlatformManifest>): Promise<void> {
+  if (storage == null) throw new Error("storage config is required to publish latest platform objects");
   for (const [target, manifest] of Object.entries(manifests)) {
     const manifestPath = join(manifestDir, `${target}.json`);
     await upload(manifestPath, `${latestPrefix}/platforms/${target}.json`, "public, max-age=60, must-revalidate");
@@ -293,6 +303,8 @@ const metadata = {
   failedTargets,
   generatedAt: new Date().toISOString(),
   github: githubInfo(),
+  dryRun: !publishSideEffectsEnabled,
+  dryRunMode,
   platforms,
   r2: {
     latestMetadataUrl: publicUrl(publicOrigin, latestPrefix, "metadata.json"),
@@ -322,9 +334,11 @@ mkdirSync(metadataDir, { recursive: true });
 const metadataPath = join(metadataDir, "metadata.json");
 writeJson(metadataPath, metadata);
 await upload(metadataPath, `${versionPrefix}/metadata.json`, "public, max-age=31536000, immutable");
-if (latestMetadataUpdated) {
+if (latestMetadataUpdated && publishSideEffectsEnabled) {
   await uploadLatestMetadataWithCas(metadataPath, `${latestPrefix}/metadata.json`);
   await publishLatestPlatformObjects(releaseTargets);
+} else if (latestMetadataUpdated) {
+  console.log(`[dry-run:${dryRunMode || "plan"}] left ${metadata.r2.latestMetadataUrl} unchanged`);
 } else {
   console.log(`left ${metadata.r2.latestMetadataUrl} unchanged because releaseState=${releaseState}`);
 }
@@ -348,4 +362,8 @@ for (const [target, manifest] of Object.entries(releaseTargets)) {
 }
 writeJson(outputsPath, outputs);
 
-console.log(`published ${releaseChannel} version metadata (${releaseState}) to ${metadata.r2.versionMetadataUrl}`);
+if (publishSideEffectsEnabled) {
+  console.log(`published ${releaseChannel} version metadata (${releaseState}) to ${metadata.r2.versionMetadataUrl}`);
+} else {
+  console.log(`planned ${releaseChannel} version metadata (${releaseState}) for ${metadata.r2.versionMetadataUrl}`);
+}

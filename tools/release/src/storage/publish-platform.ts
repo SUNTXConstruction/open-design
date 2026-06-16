@@ -44,8 +44,9 @@ const publicOrigin = required("RELEASE_PUBLIC_ORIGIN").replace(/\/+$/, "");
 const releaseAssetsDir = required("RELEASE_ASSETS_DIR");
 const manifestDir = required("RELEASE_MANIFEST_DIR");
 const outputsPath = required("RELEASE_OUTPUTS_PATH");
-const storage = storageConfigFromEnv();
 const assetSuffix = optional("RELEASE_ASSET_SUFFIX");
+const dryRunMode = optional("RELEASE_DRY_RUN_MODE");
+const publishSideEffectsEnabled = optional("RELEASE_PUBLISH_SIDE_EFFECTS", "true") !== "false";
 const versionPrefix = optional("RELEASE_VERSION_PREFIX", `${releaseChannel}/versions/${releaseVersion}${assetSuffix}`);
 const latestPrefix = `${releaseChannel}/latest`;
 const reportRoot = optional("RELEASE_REPORT_DIR");
@@ -55,11 +56,13 @@ const versionLockKey = optional(
   "RELEASE_VERSION_LOCK_KEY",
   countedReleaseChannel == null ? "" : versionLockObjectKey(releaseVersion, countedReleaseChannel),
 );
+const storage = publishSideEffectsEnabled || versionLockRequired ? storageConfigFromEnv() : null;
 
 if (versionLockRequired) {
   if (countedReleaseChannel == null) {
     throw new Error("stable releases do not use counted version reservations");
   }
+  if (storage == null) throw new Error("storage config is required for version reservation validation");
   await assertCurrentVersionReservation(storage, releaseVersion, versionLockKey, countedReleaseChannel);
   console.log(`verified ${countedReleaseChannel} version reservation ${versionLockKey}`);
 }
@@ -112,6 +115,11 @@ function createReportZip(root: string, zipPath: string): void {
 }
 
 async function upload(path: string, objectKey: string, cacheControl: string): Promise<void> {
+  if (!publishSideEffectsEnabled) {
+    console.log(`[dry-run:${dryRunMode || "plan"}] would upload ${path} to ${objectKey}`);
+    return;
+  }
+  if (storage == null) throw new Error("storage config is required to upload release assets");
   await putStorageObject({
     ...storage,
     bodyPath: path,
@@ -256,6 +264,8 @@ const manifest = {
   feed: config.feed,
   generatedAt: new Date().toISOString(),
   github: githubInfo(),
+  dryRun: !publishSideEffectsEnabled,
+  dryRunMode,
   label: config.label,
   legacyPlatformKey: config.legacyPlatformKey,
   platform: config.platform,
@@ -306,4 +316,8 @@ writeFileSync(
   "utf8",
 );
 
-console.log(`published ${config.label} ${releaseChannel} assets to ${versionPrefix}`);
+if (publishSideEffectsEnabled) {
+  console.log(`published ${config.label} ${releaseChannel} assets to ${versionPrefix}`);
+} else {
+  console.log(`planned ${config.label} ${releaseChannel} assets for ${versionPrefix}`);
+}
