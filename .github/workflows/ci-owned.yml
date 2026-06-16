@@ -13,6 +13,7 @@ concurrency:
 env:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
   COREPACK_HOME: /home/runner/.cache/open-design-ci/corepack
+  OPEN_DESIGN_CI_OWNED_ROOT: /home/runner/.cache/open-design-ci/workflows/ci-owned
   OPEN_DESIGN_CI_RUNNER_CACHE_ROOT: /home/runner/.cache/open-design-ci
   npm_config_fetch_retries: "6"
   npm_config_fetch_retry_maxtimeout: "120000"
@@ -39,10 +40,16 @@ jobs:
       - name: Pack tools-ci dist
         run: |
           set -euo pipefail
+          shared_run_root="$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID"
+          rm -rf "$shared_run_root"
+          mkdir -p "$shared_run_root"
+          tar -C tools/ci -cf "$shared_run_root/tools-ci-dist.tar" dist
           mkdir -p .tmp/workflows/ci-gate
-          tar -C tools/ci -cf .tmp/workflows/ci-gate/tools-ci-dist.tar dist
+          cp "$shared_run_root/tools-ci-dist.tar" .tmp/workflows/ci-gate/tools-ci-dist.tar
 
       - name: Upload tools-ci dist
+        if: ${{ always() }}
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-owned-tools-ci-dist
@@ -81,17 +88,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Download tools-ci dist
-        uses: actions/download-artifact@v8
-        with:
-          name: ci-owned-tools-ci-dist
-          path: .tmp/workflows/ci-gate/tools-ci-dist
-
       - name: Extract tools-ci dist
-        run: tar -C tools/ci -xf .tmp/workflows/ci-gate/tools-ci-dist/tools-ci-dist.tar
+        run: tar -C tools/ci -xf "$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/tools-ci-dist.tar"
 
       - name: Run owned CI shard
-        run: .github/workflows/scripts/ci/local-docker-tools-ci.sh --provider owned --profile "${{ matrix.profile }}" "${GITHUB_RUN_ID}-${{ matrix.shard }}" ${{ matrix.atoms }}
+        run: OPEN_DESIGN_CI_EVIDENCE_ROOT="$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/evidence" .github/workflows/scripts/ci/local-docker-tools-ci.sh --provider owned --profile "${{ matrix.profile }}" "${GITHUB_RUN_ID}-${{ matrix.shard }}" ${{ matrix.atoms }}
 
       - name: Upload owned CI shard results
         if: ${{ always() }}
@@ -99,7 +100,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ci-owned-shard-${{ matrix.shard }}
-          path: .tmp/workflows/ci-gate/runs/${{ github.run_id }}-${{ matrix.shard }}
+          path: ${{ env.OPEN_DESIGN_CI_OWNED_ROOT }}/${{ github.run_id }}/evidence/runs/${{ github.run_id }}-${{ matrix.shard }}
           if-no-files-found: error
           retention-days: 7
 
@@ -115,29 +116,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Download tools-ci dist
-        uses: actions/download-artifact@v8
-        with:
-          name: ci-owned-tools-ci-dist
-          path: .tmp/workflows/ci-gate/tools-ci-dist
-
       - name: Extract tools-ci dist
-        run: tar -C tools/ci -xf .tmp/workflows/ci-gate/tools-ci-dist/tools-ci-dist.tar
-
-      - name: Download owned CI shard results
-        uses: actions/download-artifact@v8
-        with:
-          pattern: ci-owned-shard-*
-          path: .tmp/workflows/ci-gate/shards
+        run: tar -C tools/ci -xf "$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/tools-ci-dist.tar"
 
       - name: Merge owned CI shard results
         run: |
           set -euo pipefail
-          out_dir=".tmp/workflows/ci-gate/runs/${GITHUB_RUN_ID}"
+          out_dir="$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/evidence/runs/${GITHUB_RUN_ID}"
           mkdir -p "$out_dir"
           node tools/ci/dist/index.mjs merge-shards \
             --manifest tools/ci/atoms.json \
-            --shards-root .tmp/workflows/ci-gate/shards \
+            --shards-root "$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/evidence/runs" \
             --provider owned \
             --mode default \
             --event-name "$GITHUB_EVENT_NAME" \
@@ -154,6 +143,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ci-results-owned
-          path: .tmp/workflows/ci-gate/runs/${{ github.run_id }}
+          path: ${{ env.OPEN_DESIGN_CI_OWNED_ROOT }}/${{ github.run_id }}/evidence/runs/${{ github.run_id }}
           if-no-files-found: error
           retention-days: 7

@@ -141,7 +141,8 @@ case "$profile" in
     ;;
 esac
 image_ref="${OPEN_DESIGN_CI_IMAGE_REF:-$default_image_ref}"
-run_root="$repo_root/.tmp/workflows/ci-gate/runs/$run_id"
+evidence_root="${OPEN_DESIGN_CI_EVIDENCE_ROOT:-$repo_root/.tmp/workflows/ci-gate}"
+run_root="$evidence_root/runs/$run_id"
 default_tool_root="$repo_root/.tmp/tools-ci"
 default_runner_cache_root=""
 if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
@@ -235,7 +236,7 @@ docker run --rm \
   "${docker_profile_args[@]}" \
   --user "$host_uid:$host_gid" \
   --volume "$repo_root:/repo-src:ro" \
-  --volume "$repo_root/.tmp/workflows/ci-gate:/evidence" \
+  --volume "$evidence_root:/evidence" \
   --volume "$tool_root:/tool" \
   "${docker_cache_volumes[@]}" \
   "${docker_profile_volumes[@]}" \
