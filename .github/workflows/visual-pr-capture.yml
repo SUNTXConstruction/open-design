@@ -33,30 +33,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: home-core
-            grep: '@visual-home-core'
+          - name: home-community
+            grep: '@visual-home-core|@visual-community'
             daemon_port: '17456'
             web_port: '17573'
-          - name: community
-            grep: '@visual-community'
-            daemon_port: '17476'
-            web_port: '17593'
-          - name: navigation
-            grep: '@visual-navigation'
+          - name: navigation-workspace
+            grep: '@visual-navigation|@visual-workspace'
             daemon_port: '17496'
             web_port: '17613'
-          - name: workspace
-            grep: '@visual-workspace'
-            daemon_port: '17516'
-            web_port: '17633'
-          - name: topbar-avatar
-            grep: '@visual-topbar-avatar'
+          - name: topbar-settings
+            grep: '@visual-topbar-avatar|@visual-settings'
             daemon_port: '17536'
             web_port: '17653'
-          - name: settings
-            grep: '@visual-settings'
-            daemon_port: '17556'
-            web_port: '17673'
 
     steps:
       - name: Checkout
