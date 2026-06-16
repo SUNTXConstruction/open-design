@@ -27,8 +27,13 @@ export type AtomDefinition = {
   timeoutSeconds: number;
 };
 
+export type DisabledAtomDefinition = AtomDefinition & {
+  disabledReason: string;
+};
+
 export type AtomManifest = {
   atoms: AtomDefinition[];
+  disabledAtoms?: DisabledAtomDefinition[];
   schemaVersion: 1;
 };
 
@@ -41,6 +46,7 @@ export type AtomManifestValidationOptions = {
 export type AtomManifestValidationResult = {
   atomCount: number;
   atomNames: string[];
+  disabledAtomNames: string[];
   manifest: AtomManifest;
 };
 
@@ -177,6 +183,16 @@ function parseAtomDefinition(value: unknown, path: string): AtomDefinition {
   };
 }
 
+function parseDisabledAtomDefinition(value: unknown, path: string): DisabledAtomDefinition {
+  if (!isRecord(value)) {
+    throw new Error(`${path} must be an object`);
+  }
+  return {
+    ...parseAtomDefinition(value, path),
+    disabledReason: assertString(value.disabledReason, formatPath(path, "disabledReason")),
+  };
+}
+
 export function parseAtomManifest(value: unknown): AtomManifest {
   if (!isRecord(value)) {
     throw new Error("atom manifest must be an object");
@@ -189,6 +205,14 @@ export function parseAtomManifest(value: unknown): AtomManifest {
   }
 
   const atoms = value.atoms.map((atom, index) => parseAtomDefinition(atom, `atoms.${index}`));
+  const disabledAtoms = value.disabledAtoms == null
+    ? []
+    : (() => {
+        if (!Array.isArray(value.disabledAtoms)) {
+          throw new Error("disabledAtoms must be an array");
+        }
+        return value.disabledAtoms.map((atom, index) => parseDisabledAtomDefinition(atom, `disabledAtoms.${index}`));
+      })();
   const seen = new Set<string>();
   const seenIdentity = new Set<string>();
   for (const atom of atoms) {
@@ -202,15 +226,25 @@ export function parseAtomManifest(value: unknown): AtomManifest {
     }
     seenIdentity.add(identity);
   }
+  for (const atom of disabledAtoms) {
+    if (seen.has(atom.name)) {
+      throw new Error(`disabled atom duplicates active atom name: ${atom.name}`);
+    }
+    const identity = `${atom.domain}/${atom.key}`;
+    if (seenIdentity.has(identity)) {
+      throw new Error(`disabled atom duplicates active atom identity: ${identity}`);
+    }
+  }
 
   return {
     atoms,
+    disabledAtoms,
     schemaVersion: 1,
   };
 }
 
 async function assertScriptFiles(manifest: AtomManifest, repoRoot: string): Promise<void> {
-  for (const atom of manifest.atoms) {
+  for (const atom of [...manifest.atoms, ...(manifest.disabledAtoms ?? [])]) {
     const scriptPath = resolve(repoRoot, atom.script);
     await access(scriptPath).catch(() => {
       throw new Error(`atom script not found for ${atom.name}: ${scriptPath}`);
@@ -238,6 +272,7 @@ export async function validateAtomManifest(
   return {
     atomCount: manifest.atoms.length,
     atomNames: manifest.atoms.map((atom) => atom.name),
+    disabledAtomNames: (manifest.disabledAtoms ?? []).map((atom) => atom.name),
     manifest,
   };
 }

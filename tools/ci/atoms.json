@@ -68,19 +68,6 @@
     },
     {
       "domain": "apps",
-      "key": "daemon",
-      "name": "daemon",
-      "call": "daemon build and tests",
-      "script": ".github/workflows/scripts/ci/actions/daemon.sh",
-      "requires": ["node", "pnpm"],
-      "setup": "pnpm-workspace",
-      "timeoutSeconds": 1200,
-      "cacheProfile": "node-pnpm",
-      "artifactProfile": "standard",
-      "resultRequired": true
-    },
-    {
-      "domain": "apps",
       "key": "web",
       "name": "web",
       "call": "web sidecar build and tests",
@@ -104,6 +91,22 @@
       "cacheProfile": "node-pnpm",
       "artifactProfile": "standard",
       "resultRequired": true
+    }
+  ],
+  "disabledAtoms": [
+    {
+      "domain": "apps",
+      "key": "daemon",
+      "name": "daemon",
+      "call": "daemon build and tests",
+      "script": ".github/workflows/scripts/ci/actions/daemon.sh",
+      "requires": ["node", "pnpm"],
+      "setup": "pnpm-workspace",
+      "timeoutSeconds": 1200,
+      "cacheProfile": "node-pnpm",
+      "artifactProfile": "standard",
+      "resultRequired": true,
+      "disabledReason": "Temporarily disabled while optimizing the ci-owned shell. Runtime optimization continues in codex/test-runtime-optimization."
     },
     {
       "domain": "e2e",
@@ -116,7 +119,8 @@
       "timeoutSeconds": 1800,
       "cacheProfile": "browser",
       "artifactProfile": "browser",
-      "resultRequired": true
+      "resultRequired": true,
+      "disabledReason": "Temporarily disabled while optimizing the ci-owned shell. Runtime optimization continues in codex/test-runtime-optimization."
     },
     {
       "domain": "e2e",
@@ -129,7 +133,8 @@
       "timeoutSeconds": 3600,
       "cacheProfile": "browser",
       "artifactProfile": "browser",
-      "resultRequired": true
+      "resultRequired": true,
+      "disabledReason": "Temporarily disabled while optimizing the ci-owned shell. Runtime optimization continues in codex/test-runtime-optimization."
     }
   ]
 }

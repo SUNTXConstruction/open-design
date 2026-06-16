@@ -21,6 +21,7 @@ const buildTargets = [
   "packages/sidecar",
   "packages/diagnostics",
   "apps/daemon",
+  "tools/ci",
   "tools/dev",
   "tools/pack",
   "tools/serve",

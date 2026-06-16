@@ -57,6 +57,47 @@ test("parseAtomManifest accepts a domain/key atom manifest", () => {
   assert.equal(manifest.atoms[0]?.call, "pnpm guard");
 });
 
+test("parseAtomManifest preserves disabled atoms outside the active atom set", () => {
+  const manifest = parseAtomManifest({
+    schemaVersion: 1,
+    atoms: [
+      {
+        artifactProfile: "standard",
+        cacheProfile: "node-pnpm",
+        call: "pnpm guard",
+        domain: "workspace",
+        key: "guard",
+        name: "guard",
+        requires: ["node", "pnpm"],
+        resultRequired: true,
+        script: ".github/workflows/scripts/ci/actions/guard.sh",
+        setup: "pnpm-workspace",
+        timeoutSeconds: 600,
+      },
+    ],
+    disabledAtoms: [
+      {
+        artifactProfile: "standard",
+        cacheProfile: "node-pnpm",
+        call: "daemon build and tests",
+        disabledReason: "temporarily disabled",
+        domain: "apps",
+        key: "daemon",
+        name: "daemon",
+        requires: ["node", "pnpm"],
+        resultRequired: true,
+        script: ".github/workflows/scripts/ci/actions/daemon.sh",
+        setup: "pnpm-workspace",
+        timeoutSeconds: 1200,
+      },
+    ],
+  });
+
+  assert.deepEqual(manifest.atoms.map((atom) => atom.name), ["guard"]);
+  assert.deepEqual(manifest.disabledAtoms?.map((atom) => atom.name), ["daemon"]);
+  assert.equal(manifest.disabledAtoms?.[0]?.disabledReason, "temporarily disabled");
+});
+
 test("parseAtomManifest rejects mismatched name and domain/key", () => {
   assert.throws(
     () => parseAtomManifest({

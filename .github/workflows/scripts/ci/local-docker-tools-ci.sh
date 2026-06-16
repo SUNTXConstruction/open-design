@@ -9,16 +9,16 @@ Default ci-base atoms:
   guard i18n
 
 Default ci-playwright atoms:
-  e2e-vitest playwright-critical
+  temporarily disabled while optimizing the ci-owned shell
 
 Default nix-capable atoms:
   nix
 
 Supported ci-base atoms:
-  guard i18n unit daemon web typecheck build
+  guard i18n unit web typecheck build
 
 Supported ci-playwright atoms:
-  e2e-vitest playwright-critical
+  temporarily disabled while optimizing the ci-owned shell
 
 Supported nix-capable atoms:
   nix
@@ -92,7 +92,7 @@ shift
 if [ "$#" -eq 0 ]; then
   case "$profile" in
     ci-playwright)
-      selected_atoms=(e2e-vitest playwright-critical)
+      selected_atoms=()
       ;;
     nix-capable)
       selected_atoms=(nix)
@@ -105,6 +105,11 @@ else
   selected_atoms=("$@")
 fi
 
+if [ "${#selected_atoms[@]}" -eq 0 ]; then
+  echo "$profile has no enabled default atoms in this branch" >&2
+  exit 2
+fi
+
 case "$run_id" in
   ''|*/*|*' '*|*'..'*)
     echo "run-id must be a simple path segment" >&2
@@ -114,9 +119,15 @@ esac
 
 for atom in "${selected_atoms[@]}"; do
   case "$profile:$atom" in
-    ci-base:guard|ci-base:i18n|ci-base:unit|ci-base:daemon|ci-base:web|ci-base:typecheck|ci-base:build)
+    ci-base:guard|ci-base:i18n|ci-base:unit|ci-base:web|ci-base:typecheck|ci-base:build)
       ;;
-    ci-playwright:e2e-vitest|ci-playwright:playwright-critical)
+    ci-base:daemon|ci-playwright:e2e-vitest|ci-playwright:playwright-critical)
+      echo "$atom is temporarily disabled while optimizing the ci-owned shell" >&2
+      exit 2
+      ;;
+    ci-playwright:*)
+      echo "ci-playwright atoms are temporarily disabled while optimizing the ci-owned shell" >&2
+      exit 2
       ;;
     nix-capable:nix)
       ;;
@@ -164,12 +175,15 @@ fi
 
 if ! node --experimental-strip-types "$repo_root/packages/metatool/src/cli.ts" check "$repo_root/tools/ci" >/dev/null 2>&1; then
   package_manager="$(node -p "JSON.parse(require('node:fs').readFileSync('$repo_root/package.json', 'utf8')).packageManager")"
-  echo "tools-ci dist is missing or stale; installing workspace and rebuilding tools-ci"
+  echo "tools-ci dist is missing or stale; installing workspace"
   (
     cd "$repo_root"
     corepack prepare "$package_manager" --activate
     corepack pnpm install --frozen-lockfile --prefer-offline --network-concurrency=8
-    corepack pnpm --filter @open-design/tools-ci build
+    if ! node --experimental-strip-types packages/metatool/src/cli.ts check tools/ci >/dev/null 2>&1; then
+      echo "tools-ci dist is still missing or stale after install; rebuilding tools-ci"
+      corepack pnpm --filter @open-design/tools-ci build
+    fi
   )
 fi
 

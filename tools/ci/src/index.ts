@@ -81,13 +81,17 @@ async function validateAtoms(options: ValidateAtomsOptions): Promise<void> {
     printJson({
       atomCount: result.atomCount,
       atomNames: result.atomNames,
+      disabledAtomNames: result.disabledAtomNames,
       manifestPath,
       schemaVersion: result.manifest.schemaVersion,
     });
     return;
   }
 
-  process.stdout.write(`tools-ci atoms: ${result.atomCount} valid (${result.atomNames.join(", ")})\n`);
+  const disabledSuffix = result.disabledAtomNames.length === 0
+    ? ""
+    : `; disabled: ${result.disabledAtomNames.join(", ")}`;
+  process.stdout.write(`tools-ci atoms: ${result.atomCount} valid (${result.atomNames.join(", ")})${disabledSuffix}\n`);
 }
 
 async function selectAtoms(options: SelectAtomsOptions): Promise<void> {

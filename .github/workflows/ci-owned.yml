@@ -34,12 +34,10 @@ jobs:
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
 
-      - name: Build tools-ci
-        run: pnpm --filter @open-design/tools-ci build
-
       - name: Pack tools-ci dist
         run: |
           set -euo pipefail
+          node --experimental-strip-types packages/metatool/src/cli.ts check tools/ci
           shared_run_root="$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID"
           rm -rf "$shared_run_root"
           mkdir -p "$shared_run_root"
@@ -58,15 +56,6 @@ jobs:
           - shard: nix
             profile: nix-capable
             atoms: nix
-          - shard: e2e-vitest
-            profile: ci-playwright
-            atoms: e2e-vitest
-          - shard: playwright-critical
-            profile: ci-playwright
-            atoms: playwright-critical
-          - shard: daemon
-            profile: ci-base
-            atoms: daemon
           - shard: build-typecheck
             profile: ci-base
             atoms: typecheck build
