@@ -633,7 +633,7 @@ winOnboardingDescribe('packaged windows onboarding AMR smoke', () => {
       expect(install.namespace).toBe(namespace);
       expectPathInside(install.installDir, join(runtimeNamespaceRoot, 'install'));
       installedNamespaceRoot = await resolveExpectedNamespaceRoot(install.installDir);
-      await resetPackagedRuntimeNamespaceRoot(installedNamespaceRoot);
+      await resetPackagedRuntimeDataRoot(install.installDir);
 
       const start = await measureSmokeStep(timings, 'start fresh onboarding', async () => runToolsPackJson<WinStartResult>('start'));
       started = true;
@@ -1356,6 +1356,10 @@ async function seedPackagedOnboardingComplete(installDir: string): Promise<void>
 
 async function resetPackagedRuntimeNamespaceRoot(namespaceRoot: string): Promise<void> {
   await rm(namespaceRoot, { force: true, recursive: true });
+}
+
+async function resetPackagedRuntimeDataRoot(installDir: string): Promise<void> {
+  await rm(await resolveExpectedDataRoot(installDir), { force: true, recursive: true });
 }
 
 async function resolveExpectedDataRoot(installDir: string): Promise<string> {
