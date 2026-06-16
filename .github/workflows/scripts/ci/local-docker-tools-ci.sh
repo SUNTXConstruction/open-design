@@ -27,7 +27,7 @@ Environment:
   OPEN_DESIGN_CI_IMAGE_REF          Docker image ref override
   OPEN_DESIGN_CI_BASE_IMAGE         ci-base image ref, default open-design-ci-base:v0.1.0-beta.1
   OPEN_DESIGN_CI_PLAYWRIGHT_IMAGE   ci-playwright image ref, default open-design-ci-playwright:v0.1.0-beta.2
-  OPEN_DESIGN_CI_NIX_IMAGE          nix-capable image ref, default open-design-ci-nix:v0.1.0-beta.6
+  OPEN_DESIGN_CI_NIX_IMAGE          nix-capable image ref, default open-design-ci-nix:v0.1.0-beta.7
   OPEN_DESIGN_CI_NIX_VOLUME         nix-capable Docker volume, default open-design-tools-ci-nix-store
 
 Evidence is written under:
@@ -134,7 +134,7 @@ case "$profile" in
     default_image_ref="${OPEN_DESIGN_CI_PLAYWRIGHT_IMAGE:-open-design-ci-playwright:v0.1.0-beta.2}"
     ;;
   nix-capable)
-    default_image_ref="${OPEN_DESIGN_CI_NIX_IMAGE:-open-design-ci-nix:v0.1.0-beta.6}"
+    default_image_ref="${OPEN_DESIGN_CI_NIX_IMAGE:-open-design-ci-nix:v0.1.0-beta.7}"
     ;;
   *)
     default_image_ref="${OPEN_DESIGN_CI_BASE_IMAGE:-open-design-ci-base:v0.1.0-beta.1}"
@@ -211,7 +211,7 @@ if [ "$profile" = "nix-capable" ]; then
     --env USER=runner
     --env LOGNAME=runner
     --env CI_GATE_NIX_FLAKE_REF="path:/tmp/tools-ci-work/$run_id"
-    --env $'NIX_CONFIG=experimental-features = nix-command flakes\nmax-jobs = 1\ncores = 1\nconnect-timeout = 30\ndownload-attempts = 3\nhttp-connections = 8\nmax-substitution-jobs = 8\nstalled-download-timeout = 120\nsubstituters = https://mirrors.ustc.edu.cn/nix-channels/store https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://cache.nixos.org/\ntrusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gW2ZqJ/dSdV/9dKkPv0G3J8t7Yc='
+    --env $'NIX_CONFIG=experimental-features = nix-command flakes\nmax-jobs = 1\ncores = 1\nconnect-timeout = 30\ndownload-attempts = 3\nhttp-connections = 8\nmax-substitution-jobs = 8\nstalled-download-timeout = 120\nsubstituters = https://mirrors.ustc.edu.cn/nix-channels/store https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://cache.nixos.org/\ntrusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY='
   )
 fi
 
