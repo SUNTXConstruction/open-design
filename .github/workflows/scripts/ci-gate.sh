@@ -67,18 +67,15 @@ mkdir -p "$results_dir"
 mkdir -p "$COREPACK_HOME"
 mkdir -p "$npm_config_store_dir"
 
-if ! node --experimental-strip-types "$ci_root/packages/metatool/src/cli.ts" check "$ci_root/tools/ci" >/dev/null 2>&1; then
-  package_manager="$(node -p "JSON.parse(require('node:fs').readFileSync('$ci_root/package.json', 'utf8')).packageManager")"
-  echo "tools-ci dist is missing or stale; installing workspace"
-  (
-    cd "$ci_root"
-    corepack prepare "$package_manager" --activate
-    corepack pnpm install --frozen-lockfile --prefer-offline --network-concurrency=8
-    if ! node --experimental-strip-types packages/metatool/src/cli.ts check tools/ci >/dev/null 2>&1; then
-      echo "tools-ci dist is still missing or stale after install; rebuilding tools-ci"
-      corepack pnpm --filter @open-design/tools-ci build
-    fi
-  )
+package_manager="$(node -p "JSON.parse(require('node:fs').readFileSync('$ci_root/package.json', 'utf8')).packageManager")"
+corepack prepare "$package_manager" --activate
+if ! corepack pnpm -C "$ci_root" tools-ci validate-atoms --manifest "$ci_root/tools/ci/atoms.json" >/dev/null 2>&1; then
+  echo "tools-ci command is unavailable; installing workspace"
+  corepack pnpm -C "$ci_root" install --frozen-lockfile --prefer-offline --network-concurrency=8
+  if ! corepack pnpm -C "$ci_root" tools-ci validate-atoms --manifest "$ci_root/tools/ci/atoms.json" >/dev/null 2>&1; then
+    echo "tools-ci command is still unavailable after workspace install" >&2
+    exit 1
+  fi
 fi
 
 PROVIDER="$provider" \
@@ -124,7 +121,7 @@ export OD_CI_WORK_DIR="$ci_root"
 export OD_CI_WORKSPACE_ROOT="$ci_root"
 
 set +e
-node "$ci_root/tools/ci/dist/index.mjs" execute \
+corepack pnpm -C "$ci_root" tools-ci execute \
   --manifest "$OD_CI_ATOM_MANIFEST" \
   --selection "$selection_path"
 execute_exit="$?"

@@ -23,8 +23,8 @@ env:
   OD_CI_PNPM_INSTALL_MODE: offline
 
 jobs:
-  prepare-tools-ci:
-    name: Owned CI / prepare tools-ci
+  prepare-workspace:
+    name: Owned CI / prepare workspace
     runs-on: [self-hosted, Linux, ARM64, nexu-spark, open-design-ci]
     timeout-minutes: 30
     steps:
@@ -34,18 +34,19 @@ jobs:
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
 
-      - name: Pack tools-ci dist
+      - name: Publish prepared workspace
         run: |
           set -euo pipefail
-          node --experimental-strip-types packages/metatool/src/cli.ts check tools/ci
           shared_run_root="$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID"
+          shared_workspace="$shared_run_root/workspace"
           rm -rf "$shared_run_root"
-          mkdir -p "$shared_run_root"
-          tar -C tools/ci -cf "$shared_run_root/tools-ci-dist.tar" dist
+          mkdir -p "$shared_workspace"
+          tar -C "$GITHUB_WORKSPACE" -cf - . | tar -C "$shared_workspace" -xf -
+          pnpm -C "$shared_workspace" tools-ci validate-atoms --manifest "$shared_workspace/tools/ci/atoms.json"
 
   shard:
     name: Owned CI / ${{ matrix.shard }}
-    needs: prepare-tools-ci
+    needs: prepare-workspace
     runs-on: [self-hosted, Linux, ARM64, nexu-spark, open-design-ci]
     timeout-minutes: 120
     strategy:
@@ -65,36 +66,26 @@ jobs:
     env:
       CI_GATE_HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Extract tools-ci dist
-        run: tar -C tools/ci -xf "$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/tools-ci-dist.tar"
-
       - name: Run owned CI shard
-        run: OPEN_DESIGN_CI_EVIDENCE_ROOT="$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/evidence" OPEN_DESIGN_CI_TRUST_TOOLS_CI_DIST=1 .github/workflows/scripts/ci/local-docker-tools-ci.sh --provider owned --profile "${{ matrix.profile }}" "${GITHUB_RUN_ID}-${{ matrix.shard }}" ${{ matrix.atoms }}
+        working-directory: ${{ env.OPEN_DESIGN_CI_OWNED_ROOT }}/${{ github.run_id }}/workspace
+        run: OPEN_DESIGN_CI_EVIDENCE_ROOT="$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/evidence" .github/workflows/scripts/ci/local-docker-tools-ci.sh --provider owned --profile "${{ matrix.profile }}" "${GITHUB_RUN_ID}-${{ matrix.shard }}" ${{ matrix.atoms }}
 
   merge:
     name: Owned CI / merge
-    needs: [prepare-tools-ci, shard]
+    needs: [prepare-workspace, shard]
     if: ${{ always() }}
     runs-on: [self-hosted, Linux, ARM64, nexu-spark, open-design-ci]
     timeout-minutes: 20
     env:
       CI_GATE_HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Extract tools-ci dist
-        run: tar -C tools/ci -xf "$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/tools-ci-dist.tar"
-
       - name: Merge owned CI shard results
+        working-directory: ${{ env.OPEN_DESIGN_CI_OWNED_ROOT }}/${{ github.run_id }}/workspace
         run: |
           set -euo pipefail
           out_dir="$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/evidence/runs/${GITHUB_RUN_ID}"
           mkdir -p "$out_dir"
-          node tools/ci/dist/index.mjs merge-shards \
+          pnpm tools-ci merge-shards \
             --manifest tools/ci/atoms.json \
             --shards-root "$OPEN_DESIGN_CI_OWNED_ROOT/$GITHUB_RUN_ID/evidence/runs" \
             --provider owned \

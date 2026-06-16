@@ -130,8 +130,8 @@ jobs:
             "repos/${{ github.repository }}/actions/workflows/ci-github.yml/dispatches" \
             -f ref='${{ github.ref_name }}'
 
-      - name: Check tools-ci dist
-        run: node --experimental-strip-types packages/metatool/src/cli.ts check tools/ci
+      - name: Check tools-ci command
+        run: pnpm tools-ci validate-atoms --manifest tools/ci/atoms.json
 
       - name: Aggregate CI results
-        run: node tools/ci/dist/index.mjs gate --manifest tools/ci/atoms.json
+        run: pnpm tools-ci gate --manifest tools/ci/atoms.json

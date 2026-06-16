@@ -163,7 +163,7 @@ fi
 runner_cache_root="${OPEN_DESIGN_CI_RUNNER_CACHE_ROOT:-$default_runner_cache_root}"
 tool_root="${OPEN_DESIGN_CI_TOOL_ROOT:-$default_tool_root}"
 selection_path="$tool_root/selections/$run_id.json"
-head_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || printf 'unknown')"
+head_sha="${CI_GATE_HEAD_SHA:-$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || printf 'unknown')}"
 host_uid="$(id -u)"
 host_gid="$(id -g)"
 ci_mode="default"
@@ -173,23 +173,15 @@ if [ ! -f "$repo_root/package.json" ]; then
   exit 1
 fi
 
-if [ "${OPEN_DESIGN_CI_TRUST_TOOLS_CI_DIST:-}" = "1" ]; then
-  if [ ! -f "$repo_root/tools/ci/dist/index.mjs" ] || [ ! -f "$repo_root/tools/ci/dist/metadata.json" ]; then
-    echo "trusted tools-ci dist is missing after extraction" >&2
+package_manager="$(node -p "JSON.parse(require('node:fs').readFileSync('$repo_root/package.json', 'utf8')).packageManager")"
+corepack prepare "$package_manager" --activate
+if ! corepack pnpm -C "$repo_root" tools-ci validate-atoms --manifest "$repo_root/tools/ci/atoms.json" >/dev/null 2>&1; then
+  echo "tools-ci command is unavailable; installing workspace"
+  corepack pnpm -C "$repo_root" install --frozen-lockfile --prefer-offline --network-concurrency=8
+  if ! corepack pnpm -C "$repo_root" tools-ci validate-atoms --manifest "$repo_root/tools/ci/atoms.json" >/dev/null 2>&1; then
+    echo "tools-ci command is still unavailable after workspace install" >&2
     exit 1
   fi
-elif ! node --experimental-strip-types "$repo_root/packages/metatool/src/cli.ts" check "$repo_root/tools/ci" >/dev/null 2>&1; then
-  package_manager="$(node -p "JSON.parse(require('node:fs').readFileSync('$repo_root/package.json', 'utf8')).packageManager")"
-  echo "tools-ci dist is missing or stale; installing workspace"
-  (
-    cd "$repo_root"
-    corepack prepare "$package_manager" --activate
-    corepack pnpm install --frozen-lockfile --prefer-offline --network-concurrency=8
-    if ! node --experimental-strip-types packages/metatool/src/cli.ts check tools/ci >/dev/null 2>&1; then
-      echo "tools-ci dist is still missing or stale after install; rebuilding tools-ci"
-      corepack pnpm --filter @open-design/tools-ci build
-    fi
-  )
 fi
 
 mkdir -p "$run_root" "$tool_root/selections"
@@ -283,6 +275,6 @@ docker run --rm \
   "${docker_identity_env[@]}" \
   "${docker_profile_env[@]}" \
   "$image_ref" \
-  bash -lc 'node /repo-src/tools/ci/dist/index.mjs execute --selection "/tool/selections/$OD_CI_RUN_ID.json"'
+  bash -lc './node_modules/.bin/tools-ci execute --selection "/tool/selections/$OD_CI_RUN_ID.json"'
 
 echo "$run_root"
