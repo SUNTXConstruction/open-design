@@ -34,6 +34,7 @@ const WIN_NSIS_OVERLAY_RELATIVE_PATHS = [
 ] as const;
 
 export const WIN_PAYLOAD_SEVEN_Z_CREATE_ARGS = ["-t7z", "-m0=LZMA2", "-mx=1", "-mf=off"] as const;
+const WIN_NSIS_PAYLOAD_SEVEN_Z_TIMEOUT_MS = 180_000;
 
 function escapeNsisString(value: string): string {
   return value.replace(/\$/g, "$$").replace(/"/g, '$\\"').replace(/\r?\n/g, "$\\r$\\n");
@@ -1062,7 +1063,7 @@ function createWinNsisTimingHelpers() {
     phase: string,
     command: string,
     args: string[],
-    options: { cwd: string; outputPath?: string },
+    options: { cwd: string; outputPath?: string; timeoutMs?: number },
   ): Promise<void> => {
     const startedAt = Date.now();
     const details: Record<string, unknown> = {
@@ -1074,6 +1075,7 @@ function createWinNsisTimingHelpers() {
     try {
       const result = await execFileAsync(command, args, {
         cwd: options.cwd,
+        timeout: options.timeoutMs,
         windowsHide: true,
       });
       details.stdoutBytes = result.stdout.length;
@@ -1087,10 +1089,16 @@ function createWinNsisTimingHelpers() {
       logWinInstallerProgress("segment:done", { durationMs: Date.now() - startedAt, phase });
       timings.push({ details, durationMs: Date.now() - startedAt, phase });
     } catch (error) {
-      const failure = error as { code?: unknown; stderr?: unknown; stdout?: unknown };
+      const failure = error as { code?: unknown; killed?: unknown; signal?: unknown; stderr?: unknown; stdout?: unknown };
       details.code = failure.code;
+      details.killed = failure.killed;
+      details.signal = failure.signal;
       details.stdoutTail = typeof failure.stdout === "string" ? failure.stdout.slice(-2000) : undefined;
       details.stderrTail = typeof failure.stderr === "string" ? failure.stderr.slice(-2000) : undefined;
+      if (options.outputPath != null && await pathExists(options.outputPath)) {
+        details.outputBytes = (await stat(options.outputPath)).size;
+        details.outputPath = options.outputPath;
+      }
       logWinInstallerProgress("segment:failed", {
         durationMs: Date.now() - startedAt,
         error: error instanceof Error ? error.message : String(error),
@@ -1125,7 +1133,7 @@ async function buildWinNsisPayloadArchive(
       `${phasePrefix}:process`,
       winResources.sevenZipExe,
       archiveArgs,
-      { cwd: builtApp.unpackedRoot, outputPath },
+      { cwd: builtApp.unpackedRoot, outputPath, timeoutMs: WIN_NSIS_PAYLOAD_SEVEN_Z_TIMEOUT_MS },
     );
   });
   return timings;
@@ -1190,7 +1198,7 @@ export async function buildWinNsisOverlayPayload(
           paths.installerOverlayPayloadPath,
           ".\\*",
         ],
-        { cwd: stageRoot, outputPath: paths.installerOverlayPayloadPath },
+        { cwd: stageRoot, outputPath: paths.installerOverlayPayloadPath, timeoutMs: WIN_NSIS_PAYLOAD_SEVEN_Z_TIMEOUT_MS },
       );
     });
   } finally {
