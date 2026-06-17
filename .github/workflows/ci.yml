@@ -32,7 +32,7 @@ concurrency:
 jobs:
   change_scopes:
     name: Detect CI change scopes
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     outputs:
       daemon_tests_required: ${{ steps.detect.outputs.daemon_tests_required }}
       web_tests_required: ${{ steps.detect.outputs.web_tests_required }}
@@ -59,7 +59,7 @@ jobs:
 
   static_gate:
     name: Static gate
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     timeout-minutes: 10
     env:
       ACTIONLINT_VERSION: 1.7.12
@@ -72,7 +72,12 @@ jobs:
 
       - name: Install actionlint
         run: |
-          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+          case "$(uname -m)" in
+            x86_64) actionlint_arch=amd64 ;;
+            aarch64|arm64) actionlint_arch=arm64 ;;
+            *) echo "Unsupported actionlint architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${actionlint_arch}.tar.gz" \
             | tar -xz actionlint
           sudo install -m 0755 actionlint /usr/local/bin/actionlint
 
@@ -483,7 +488,7 @@ jobs:
       - e2e_vitest
       - playwright_critical
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     timeout-minutes: 5
 
     steps:
@@ -505,7 +510,7 @@ jobs:
     needs:
       - validate
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     timeout-minutes: 5
     continue-on-error: true
 
