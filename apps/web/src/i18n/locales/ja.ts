@@ -2150,6 +2150,8 @@ export const ja: Dict = {
   'fileViewer.exportPptxEditable': 'PPTX（編集可能）として書き出し',
   'fileViewer.exportingProgress': '書き出し中…',
   'fileViewer.exportSlideProgress': 'スライド {current}/{total} を書き出し中…',
+  'fileViewer.exportingElapsed': '書き出し中… {seconds}秒',
+  'fileViewer.exportSlideEta': 'スライド {current}/{total} を書き出し中 · 残り約 {seconds}秒',
   'fileViewer.exportFailed': '書き出しに失敗しました。もう一度お試しください。',
   'fileViewer.exportDone': '書き出しが完了しました',
   'fileViewer.exportImageFailed': '画像のキャプチャに失敗しました。再試行するか、ブラウザのスクリーンショット機能をご利用ください。',

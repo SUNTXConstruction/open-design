@@ -2150,6 +2150,8 @@ export const ar: Dict = {
   'fileViewer.exportPptxEditable': 'تصدير كـ PPTX (قابل للتحرير)',
   'fileViewer.exportingProgress': 'جارٍ التصدير…',
   'fileViewer.exportSlideProgress': 'جارٍ تصدير الشريحة {current}/{total}…',
+  'fileViewer.exportingElapsed': 'جارٍ التصدير… {seconds}ث',
+  'fileViewer.exportSlideEta': 'الشريحة {current}/{total} · يتبقى ~{seconds}ث',
   'fileViewer.exportFailed': 'فشل التصدير. يرجى المحاولة مرة أخرى.',
   'fileViewer.exportDone': 'اكتمل التصدير',
   'fileViewer.exportImageFailed': 'فشل التقاط الصورة. يرجى المحاولة مرة أخرى أو استخدام أداة لقطة الشاشة في المتصفح.',

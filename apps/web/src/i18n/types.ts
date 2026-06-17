@@ -2762,6 +2762,8 @@ export interface Dict {
   'fileViewer.exportPptxEditable': string;
   'fileViewer.exportingProgress': string;
   'fileViewer.exportSlideProgress': string;
+  'fileViewer.exportingElapsed': string;
+  'fileViewer.exportSlideEta': string;
   'fileViewer.exportFailed': string;
   'fileViewer.exportDone': string;
   'fileViewer.exportImageFailed': string;

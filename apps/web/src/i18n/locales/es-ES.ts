@@ -2150,6 +2150,8 @@ export const esES: Dict = {
   'fileViewer.exportPptxEditable': 'Exportar como PPTX (editable)',
   'fileViewer.exportingProgress': 'Exportando…',
   'fileViewer.exportSlideProgress': 'Exportando diapositiva {current}/{total}…',
+  'fileViewer.exportingElapsed': 'Exportando… {seconds}s',
+  'fileViewer.exportSlideEta': 'Diapositiva {current}/{total} · quedan ~{seconds}s',
   'fileViewer.exportFailed': 'La exportación falló. Inténtalo de nuevo.',
   'fileViewer.exportDone': 'Exportación completada',
   'fileViewer.exportImageFailed': 'Error al capturar la imagen. Inténtalo de nuevo o usa la herramienta de captura de pantalla de tu navegador.',

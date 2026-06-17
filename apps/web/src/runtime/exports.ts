@@ -1183,6 +1183,38 @@ function html2canvasUrl(): string {
   return base ? `${base}html2canvas.min.js` : '/html2canvas.min.js';
 }
 
+// Fetch the vendored html2canvas source same-origin (from the parent) so we can
+// INLINE it into the export iframe's srcdoc. Inlining is far more reliable than
+// having the opaque-origin sandboxed iframe load it via a cross-origin
+// <script src> (which some browsers/CSPs block). Cached after the first load.
+let html2canvasSourcePromise: Promise<string> | null = null;
+function loadHtml2canvasSource(): Promise<string> {
+  if (!html2canvasSourcePromise) {
+    html2canvasSourcePromise = fetch(html2canvasUrl())
+      .then((resp) => {
+        if (!resp.ok) throw new Error(`html2canvas fetch failed (${resp.status})`);
+        return resp.text();
+      })
+      .catch((err) => {
+        html2canvasSourcePromise = null; // allow retry on the next export
+        throw err;
+      });
+  }
+  return html2canvasSourcePromise;
+}
+
+/** Inject a library's source as an inline <script> just before </body>. */
+function injectInlineScript(doc: string, source: string): string {
+  // Neutralize any literal </script> inside the source so the HTML parser does
+  // not terminate the injected block early.
+  const safe = source.replace(/<\/script/gi, '<\\/script');
+  const tag = `<script data-od-export-lib>${safe}</script>`;
+  const lower = doc.toLowerCase();
+  const idx = lower.lastIndexOf('</body>');
+  if (idx >= 0) return doc.slice(0, idx) + tag + doc.slice(idx);
+  return doc + tag;
+}
+
 function delayMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1303,12 +1335,24 @@ async function captureArtifactSlides(
   const height = opts.height ?? (opts.deck ? 1080 : 900);
   const scale = opts.scale ?? (opts.deck ? 1 : 2);
 
+  // Build the iframe document. For image captures we inline html2canvas so the
+  // sandboxed (opaque-origin) frame never has to load it cross-origin.
+  let doc = buildSrcdoc(html, { deck: opts.deck });
+  if (opts.mode === 'image') {
+    try {
+      doc = injectInlineScript(doc, await loadHtml2canvasSource());
+    } catch (err) {
+      // Fall back to the bridge's <script src> loader (h2cUrl) below.
+      console.warn('[export] inlining html2canvas failed; falling back to script-src loader', err);
+    }
+  }
+
   const iframe = document.createElement('iframe');
   iframe.setAttribute('sandbox', 'allow-scripts');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.setAttribute('tabindex', '-1');
   iframe.style.cssText = `position:fixed;left:-100000px;top:0;width:${width}px;height:${height}px;border:0;background:#fff;`;
-  iframe.srcdoc = buildSrcdoc(html, { deck: opts.deck });
+  iframe.srcdoc = doc;
   document.body.appendChild(iframe);
 
   const slides: CapturedSlide[] = [];
@@ -1331,6 +1375,7 @@ async function captureArtifactSlides(
         slides.push(slide);
         opts.onProgress?.(slides.length, total);
       },
+      45_000,
     );
   } finally {
     iframe.remove();

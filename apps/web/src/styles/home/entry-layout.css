@@ -1663,9 +1663,9 @@
 
 .onboarding-view__hero {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   max-width: none;
-  padding-top: 0;
+  padding-top: 4px;
   text-align: center;
   justify-items: center;
 }
@@ -1676,20 +1676,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  margin-bottom: 4px;
-  border-radius: 16px;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 6px;
+  border-radius: 15px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
-  padding: 8px;
+  padding: 0;
 }
 .onboarding-view__hero-mark img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -1697,34 +1697,40 @@
 .onboarding-view__kicker {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--accent);
 }
 
 .onboarding-view__hero h1 {
   margin: 0;
   color: var(--text-strong);
-  font-size: 64px;
-  line-height: 0.98;
-  letter-spacing: 0;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 
 .onboarding-view__hero p {
-  margin: 0;
-  max-width: 62ch;
+  margin: 2px 0 0;
+  max-width: 56ch;
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: 14.5px;
   line-height: 1.6;
 }
 
+/* Premium step indicator: numbered nodes joined by a progress track, with a
+   label under each node. Completed steps fill solid and show a check, the
+   current step fills solid with a soft focus ring, upcoming steps stay as a
+   hollow outline. It reads as "step N of 4" at a glance and animates as the
+   user advances. */
 .onboarding-view__steps {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 0;
-  width: min(620px, 100%);
-  margin: -4px 0 6px;
+  width: min(640px, 100%);
+  margin: 6px 0 12px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -1734,73 +1740,127 @@
   box-shadow: none;
 }
 
-/* Segmented progress indicator: a horizontal bar per step with the label
-   below it. Bars read as progress, not as clickable cards — upcoming steps
-   are clearly muted and non-interactive. */
 .onboarding-view__steps li {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
+  flex: 1 1 0;
   min-width: 0;
-  color: var(--text-muted);
+  display: flex;
 }
 
-/* The "line" for each step. Grey while upcoming, accent once the step has
-   been reached (current or earlier). */
-.onboarding-view__steps li::before {
+/* Connector entering each node from its predecessor. It spans from the
+   previous node's centre to this node's centre, sitting behind the discs.
+   Muted by default; fills with accent once this step has been reached
+   (which means its predecessor is complete). */
+.onboarding-view__steps li:not(:first-child)::before {
   content: '';
-  display: block;
-  height: 3px;
+  position: absolute;
+  top: 13px;
+  inset-inline-end: 50%;
+  inset-inline-start: -50%;
+  height: 2px;
   border-radius: var(--radius-pill);
   background: var(--border);
-  transition: background 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: background 240ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.onboarding-view__steps li.is-reached::before {
+.onboarding-view__steps li.is-reached:not(:first-child)::before {
   background: var(--accent);
 }
 
-/* The legacy number badge is dropped in the bar+label design. */
-.onboarding-view__steps li span {
-  display: none;
-}
-
-.onboarding-view__steps li button {
+.onboarding-view__step-btn {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
   width: 100%;
   min-width: 0;
+  padding: 0 6px;
   border: 0;
-  padding: 0;
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: center;
   cursor: pointer;
 }
 
+.onboarding-view__step-btn:disabled {
+  cursor: default;
+}
+
+/* The node disc. Numbered while pending, swaps to a check once complete. */
+.onboarding-view__step-node {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-color 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    color 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    box-shadow 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Completed steps: solid accent disc with the check glyph. */
+.onboarding-view__steps li.is-done .onboarding-view__step-node {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast, #fff);
+}
+
+/* Current step: solid accent disc lifted by a soft ring. */
+.onboarding-view__steps li.is-active .onboarding-view__step-node {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast, #fff);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.onboarding-view__step-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--text-muted);
+  transition: color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 /* Reached-but-not-current steps stay navigable (jump back). */
-.onboarding-view__steps li.is-reached button {
+.onboarding-view__steps li.is-reached .onboarding-view__step-label {
   color: var(--text);
 }
 
-/* Upcoming steps are not navigable yet — muted and not-allowed. */
-.onboarding-view__steps li.is-upcoming button,
-.onboarding-view__steps li button:disabled {
-  cursor: not-allowed;
-  color: var(--text-muted);
-  opacity: 0.55;
-}
-
-.onboarding-view__steps li.is-active {
-  color: var(--text-strong);
-}
-
-.onboarding-view__steps li.is-active button {
+.onboarding-view__steps li.is-active .onboarding-view__step-label {
   color: var(--text-strong);
   font-weight: 700;
+}
+
+/* Upcoming steps are not navigable yet — muted. */
+.onboarding-view__steps li.is-upcoming .onboarding-view__step-label {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+/* Hover affordance only on navigable (reached, non-active) steps. */
+.onboarding-view__steps li.is-reached:not(.is-active)
+  .onboarding-view__step-btn:not(:disabled):hover
+  .onboarding-view__step-node {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.onboarding-view__steps li.is-reached:not(.is-active)
+  .onboarding-view__step-btn:not(:disabled):hover
+  .onboarding-view__step-label {
+  color: var(--text-strong);
 }
 
 .onboarding-view__body {
@@ -2022,8 +2082,16 @@
 .onboarding-view__primary:focus-visible,
 .onboarding-view__secondary:focus-visible,
 .onboarding-view__ghost:focus-visible,
-.onboarding-view__steps li button:focus-visible,
 .onboarding-view__card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Keyboard focus rings the node disc, following its circular shape. */
+.onboarding-view__step-btn:focus-visible {
+  outline: none;
+}
+.onboarding-view__step-btn:focus-visible .onboarding-view__step-node {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

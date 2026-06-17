@@ -2150,6 +2150,8 @@ export const th: Dict = {
   'fileViewer.exportPptxEditable': 'ส่งออกเป็น PPTX (แก้ไขได้)',
   'fileViewer.exportingProgress': 'กำลังส่งออก…',
   'fileViewer.exportSlideProgress': 'กำลังส่งออกสไลด์ {current}/{total}…',
+  'fileViewer.exportingElapsed': 'กำลังส่งออก… {seconds} วินาที',
+  'fileViewer.exportSlideEta': 'สไลด์ {current}/{total} · เหลือ ~{seconds} วินาที',
   'fileViewer.exportFailed': 'การส่งออกล้มเหลว โปรดลองอีกครั้ง',
   'fileViewer.exportDone': 'ส่งออกเสร็จสิ้น',
   'fileViewer.exportImageFailed': 'การจับภาพล้มเหลว กรุณาลองอีกครั้งหรือใช้เครื่องมือจับภาพหน้าจอของเบราว์เซอร์',

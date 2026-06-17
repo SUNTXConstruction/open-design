@@ -2150,6 +2150,8 @@ export const fa: Dict = {
   'fileViewer.exportPptxEditable': 'خروجی به‌صورت PPTX (قابل ویرایش)',
   'fileViewer.exportingProgress': 'در حال خروجی‌گرفتن…',
   'fileViewer.exportSlideProgress': 'در حال خروجی‌گرفتن اسلاید {current}/{total}…',
+  'fileViewer.exportingElapsed': 'در حال خروجی‌گرفتن… {seconds}ثانیه',
+  'fileViewer.exportSlideEta': 'اسلاید {current}/{total} · ~{seconds}ثانیه مانده',
   'fileViewer.exportFailed': 'خروجی‌گرفتن ناموفق بود. لطفاً دوباره تلاش کنید.',
   'fileViewer.exportDone': 'خروجی کامل شد',
   'fileViewer.exportImageFailed': 'گرفتن تصویر ناموفق بود. لطفاً دوباره تلاش کنید یا از ابزار اسکرین‌شات مرورگرتان استفاده کنید.',

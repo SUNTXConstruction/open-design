@@ -2150,6 +2150,8 @@ export const hu: Dict = {
   'fileViewer.exportPptxEditable': 'Exportálás PPTX-ként (szerkeszthető)',
   'fileViewer.exportingProgress': 'Exportálás…',
   'fileViewer.exportSlideProgress': '{current}/{total}. dia exportálása…',
+  'fileViewer.exportingElapsed': 'Exportálás… {seconds}mp',
+  'fileViewer.exportSlideEta': '{current}/{total}. dia · ~{seconds}mp van hátra',
   'fileViewer.exportFailed': 'Az exportálás nem sikerült. Próbáld újra.',
   'fileViewer.exportDone': 'Exportálás kész',
   'fileViewer.exportImageFailed': 'A képrögzítés sikertelen. Kérjük, próbálja újra, vagy használja a böngészője képernyőkép eszközét.',

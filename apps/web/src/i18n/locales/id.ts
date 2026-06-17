@@ -2150,6 +2150,8 @@ export const id: Dict = {
   'fileViewer.exportPptxEditable': 'Ekspor sebagai PPTX (dapat diedit)',
   'fileViewer.exportingProgress': 'Mengekspor…',
   'fileViewer.exportSlideProgress': 'Mengekspor slide {current}/{total}…',
+  'fileViewer.exportingElapsed': 'Mengekspor… {seconds}d',
+  'fileViewer.exportSlideEta': 'Slide {current}/{total} · ~{seconds}d lagi',
   'fileViewer.exportFailed': 'Ekspor gagal. Silakan coba lagi.',
   'fileViewer.exportDone': 'Ekspor selesai',
   'fileViewer.exportImageFailed': 'Gagal menangkap gambar. Silakan coba lagi atau gunakan alat tangkapan layar browser Anda.',

@@ -2150,6 +2150,8 @@ export const zhCN: Dict = {
   'fileViewer.exportPptxEditable': '导出为 PPTX（可编辑）',
   'fileViewer.exportingProgress': '正在导出…',
   'fileViewer.exportSlideProgress': '正在导出第 {current}/{total} 页…',
+  'fileViewer.exportingElapsed': '正在导出… {seconds} 秒',
+  'fileViewer.exportSlideEta': '正在导出第 {current}/{total} 页 · 约剩 {seconds} 秒',
   'fileViewer.exportFailed': '导出失败，请重试。',
   'fileViewer.exportDone': '导出完成',
   'fileViewer.exportImageFailed': '图片捕获失败，请重试或使用浏览器的截图工具。',

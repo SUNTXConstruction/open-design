@@ -2024,36 +2024,47 @@ function OnboardingView({
 
   return (
     <section className="onboarding-view" aria-label={t('settings.welcomeTitle')}>
-      {t('settings.welcomeKicker') || t('settings.welcomeSubtitle') ? (
-        <header className="onboarding-view__hero">
-          {t('settings.welcomeKicker') ? (
-            <span className="onboarding-view__kicker">{t('settings.welcomeKicker')}</span>
-          ) : null}
-          {t('settings.welcomeSubtitle') ? <p>{t('settings.welcomeSubtitle')}</p> : null}
-        </header>
-      ) : null}
+      <header className="onboarding-view__hero">
+        <span className="onboarding-view__hero-mark" aria-hidden>
+          <img src="/app-icon.svg" alt="" draggable={false} />
+        </span>
+        {t('settings.welcomeKicker') ? (
+          <span className="onboarding-view__kicker">{t('settings.welcomeKicker')}</span>
+        ) : null}
+        <h1>{t('settings.welcomeTitle')}</h1>
+        {t('settings.welcomeSubtitle') ? <p>{t('settings.welcomeSubtitle')}</p> : null}
+      </header>
       <ol className="onboarding-view__steps" aria-label={t('settings.welcomeTitle')}>
-        {steps.map((label, index) => (
-          <li
-            key={label}
-            className={[
-              index === step ? 'is-active' : '',
-              index < step ? 'is-done' : '',
-              index <= maxStepReached ? 'is-reached' : 'is-upcoming',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            <span>{index + 1}</span>
-            <button
-              type="button"
-              onClick={() => handleStepNavigation(index)}
-              disabled={onboardingNavigationLocked || index > maxStepReached}
+        {steps.map((label, index) => {
+          const isDone = index < step;
+          const isActive = index === step;
+          const isReached = index <= maxStepReached;
+          return (
+            <li
+              key={label}
+              className={[
+                isActive ? 'is-active' : '',
+                isDone ? 'is-done' : '',
+                isReached ? 'is-reached' : 'is-upcoming',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              aria-current={isActive ? 'step' : undefined}
             >
-              {label}
-            </button>
-          </li>
-        ))}
+              <button
+                type="button"
+                className="onboarding-view__step-btn"
+                onClick={() => handleStepNavigation(index)}
+                disabled={onboardingNavigationLocked || index > maxStepReached}
+              >
+                <span className="onboarding-view__step-node" aria-hidden>
+                  {isDone ? <Icon name="check" size={14} /> : index + 1}
+                </span>
+                <span className="onboarding-view__step-label">{label}</span>
+              </button>
+            </li>
+          );
+        })}
       </ol>
       <div className="onboarding-view__body">
         <div className="onboarding-view__content">

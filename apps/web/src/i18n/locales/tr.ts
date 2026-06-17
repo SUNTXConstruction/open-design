@@ -2150,6 +2150,8 @@ export const tr: Dict = {
   'fileViewer.exportPptxEditable': 'PPTX olarak dışa aktar (düzenlenebilir)',
   'fileViewer.exportingProgress': 'Dışa aktarılıyor…',
   'fileViewer.exportSlideProgress': '{current}/{total} slayt dışa aktarılıyor…',
+  'fileViewer.exportingElapsed': 'Dışa aktarılıyor… {seconds}sn',
+  'fileViewer.exportSlideEta': '{current}/{total} slayt · ~{seconds}sn kaldı',
   'fileViewer.exportFailed': 'Dışa aktarma başarısız. Lütfen tekrar deneyin.',
   'fileViewer.exportDone': 'Dışa aktarma tamamlandı',
   'fileViewer.exportImageFailed': 'Görsel yakalama başarısız oldu. Lütfen tekrar deneyin veya tarayıcınızın ekran görüntüsü aracını kullanın.',

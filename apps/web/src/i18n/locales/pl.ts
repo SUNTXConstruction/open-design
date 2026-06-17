@@ -2150,6 +2150,8 @@ export const pl: Dict = {
   'fileViewer.exportPptxEditable': 'Eksportuj jako PPTX (edytowalny)',
   'fileViewer.exportingProgress': 'Eksportowanie…',
   'fileViewer.exportSlideProgress': 'Eksportowanie slajdu {current}/{total}…',
+  'fileViewer.exportingElapsed': 'Eksportowanie… {seconds}s',
+  'fileViewer.exportSlideEta': 'Slajd {current}/{total} · pozostało ~{seconds}s',
   'fileViewer.exportFailed': 'Eksport nie powiódł się. Spróbuj ponownie.',
   'fileViewer.exportDone': 'Eksport zakończony',
   'fileViewer.exportImageFailed': 'Przechwytywanie obrazu nie powiodło się. Spróbuj ponownie lub użyj narzędzia do zrzutów ekranu w przeglądarce.',

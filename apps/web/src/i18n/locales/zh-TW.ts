@@ -2150,6 +2150,8 @@ export const zhTW: Dict = {
   'fileViewer.exportPptxEditable': '匯出為 PPTX（可編輯）',
   'fileViewer.exportingProgress': '正在匯出…',
   'fileViewer.exportSlideProgress': '正在匯出第 {current}/{total} 張…',
+  'fileViewer.exportingElapsed': '正在匯出… {seconds} 秒',
+  'fileViewer.exportSlideEta': '正在匯出第 {current}/{total} 張 · 約剩 {seconds} 秒',
   'fileViewer.exportFailed': '匯出失敗，請重試。',
   'fileViewer.exportDone': '匯出完成',
   'fileViewer.exportImageFailed': '圖片擷取失敗，請重試或使用瀏覽器的截圖工具。',

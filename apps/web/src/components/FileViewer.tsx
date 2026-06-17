@@ -4453,6 +4453,9 @@ function HtmlViewer({
 }) {
   const { locale, t } = useI18n();
   const analytics = useAnalytics();
+  // Latest per-slide capture progress for the programmatic exporters, read by
+  // the loading-toast ticker in fireShareExport to render elapsed time + ETA.
+  const exportProgressRef = useRef<{ done: number; total: number } | null>(null);
   // Shared helper for the share menu: emit studio_click share_option on
   // entry and artifact_export_result on resolution. Sync exports report
   // success immediately after the call returns; async exports get .then
@@ -4510,13 +4513,46 @@ function HtmlViewer({
       );
     };
     const toastFormats = new Set(['pdf', 'pptx', 'zip', 'html', 'image', 'markdown']);
-    // Programmatic exports compute in-browser and can take a few seconds, so show
-    // a loading toast up front; the per-slide onProgress callback (passed into the
-    // export call by the menu item) replaces it with "slide X/Y" while it runs.
+    // Programmatic exports compute in-browser and can take a while (one render
+    // per deck slide), so the loading toast ticks every second with elapsed time
+    // and — once at least one slide is captured — a live ETA derived from the
+    // average time per completed slide. onExportProgress (passed into the export
+    // call by the menu item) feeds slide progress into exportProgressRef.
+    exportProgressRef.current = null;
+    const startedAt = performance.now();
+    let ticker: ReturnType<typeof setInterval> | null = null;
+    const renderLoadingToast = () => {
+      if (!toastFormats.has(format)) return;
+      const elapsedS = Math.max(0, Math.round((performance.now() - startedAt) / 1000));
+      const p = exportProgressRef.current;
+      let message: string;
+      if (p && p.total > 1 && p.done > 0) {
+        const remainingS = Math.max(
+          1,
+          Math.round(((performance.now() - startedAt) / p.done) * (p.total - p.done) / 1000),
+        );
+        message = t('fileViewer.exportSlideEta', { current: p.done, total: p.total, seconds: remainingS });
+      } else if (p && p.total > 1) {
+        message = t('fileViewer.exportSlideProgress', { current: p.done, total: p.total });
+      } else {
+        message = elapsedS > 0
+          ? t('fileViewer.exportingElapsed', { seconds: elapsedS })
+          : t('fileViewer.exportingProgress');
+      }
+      setExportToast({ message, tone: 'loading' });
+    };
+    const stopTicker = () => {
+      if (ticker != null) {
+        clearInterval(ticker);
+        ticker = null;
+      }
+    };
     if (toastFormats.has(format)) {
-      setExportToast({ message: t('fileViewer.exportingProgress'), tone: 'loading' });
+      renderLoadingToast();
+      ticker = setInterval(renderLoadingToast, 1000);
     }
     const failToast = () => {
+      stopTicker();
       if (toastFormats.has(format)) setExportToast({ message: t('fileViewer.exportFailed'), tone: 'error' });
     };
     try {
@@ -4524,6 +4560,7 @@ function HtmlViewer({
       if (out && typeof (out as Promise<unknown>).then === 'function') {
         (out as Promise<unknown>).then(
           (result) => {
+            stopTicker();
             if (result === 'cancelled') {
               finish('cancelled');
               if (toastFormats.has(format)) setExportToast(null);
@@ -4538,6 +4575,7 @@ function HtmlViewer({
           },
         );
       } else {
+        stopTicker();
         if (out === 'cancelled') {
           finish('cancelled');
           if (toastFormats.has(format)) setExportToast(null);
@@ -4551,16 +4589,10 @@ function HtmlViewer({
       failToast();
     }
   };
-  // Drives the loading toast through per-slide capture progress for the
-  // programmatic PDF / PPTX exporters (apps/web/src/runtime/exports.ts).
+  // Feeds per-slide capture progress into the ref the loading-toast ticker reads
+  // (apps/web/src/runtime/exports.ts drives this for the PDF / PPTX exporters).
   const onExportProgress: ExportProgress = (done, total) => {
-    setExportToast({
-      message:
-        total > 1
-          ? t('fileViewer.exportSlideProgress', { current: done, total })
-          : t('fileViewer.exportingProgress'),
-      tone: 'loading',
-    });
+    exportProgressRef.current = { done, total };
   };
   // P0 helpers — keep the artifact_id + artifact_kind derivation in one place
   // so each per-button onClick stays a one-liner. We compute lazily inside the
@@ -8869,7 +8901,7 @@ function HtmlViewer({
                       message={exportToast.message}
                       tone={exportToast.tone}
                       role={exportToast.tone === 'error' ? 'alert' : 'status'}
-                      ttlMs={exportToast.tone === 'loading' ? 8000 : 2200}
+                      ttlMs={exportToast.tone === 'loading' ? 60000 : 2200}
                       placement="top"
                       onDismiss={() => setExportToast(null)}
                     />,

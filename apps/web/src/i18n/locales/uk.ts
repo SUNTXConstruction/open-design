@@ -2150,6 +2150,8 @@ export const uk: Dict = {
   'fileViewer.exportPptxEditable': 'Експорт у PPTX (редагований)',
   'fileViewer.exportingProgress': 'Експортування…',
   'fileViewer.exportSlideProgress': 'Експортування слайда {current}/{total}…',
+  'fileViewer.exportingElapsed': 'Експортування… {seconds}с',
+  'fileViewer.exportSlideEta': 'Слайд {current}/{total} · залишилось ~{seconds}с',
   'fileViewer.exportFailed': 'Не вдалося експортувати. Спробуйте ще раз.',
   'fileViewer.exportDone': 'Експорт завершено',
   'fileViewer.exportImageFailed': 'Не вдалося захопити зображення. Спробуйте ще раз або скористайтеся інструментом знімків екрана вашого браузера.',
