@@ -68,10 +68,11 @@ const WIN_ARCHIVE_CACHE_VERSION = 3;
 const WIN_ELECTRON_BUILDER_DIR_CACHE_VERSION = 6;
 const WIN_NSIS_BASE_PAYLOAD_INPUT_HASH_CACHE_VERSION = 2;
 
-async function hashWinNsisInstallerImplementation(): Promise<string> {
+async function hashWinNsisInstallerImplementation(config: ToolPackConfig): Promise<string> {
+  const sourceModulePath = join(config.workspaceRoot, "tools", "pack", "src", "win", "custom-installer.ts");
+  if (await pathExists(sourceModulePath)) return hashPath(sourceModulePath);
   const currentModulePath = fileURLToPath(import.meta.url);
-  const extension = currentModulePath.endsWith(".ts") ? ".ts" : ".js";
-  return hashPath(join(dirname(currentModulePath), `custom-installer${extension}`));
+  return hashPath(currentModulePath);
 }
 
 function logWinBuildProgress(message: string, fields: Record<string, unknown> = {}): void {
@@ -606,7 +607,7 @@ export async function runElectronBuilder(
   if (shouldBuildWinNsisInstaller(config.to) || shouldBuildWinPortableZip(config.to)) {
     const signingCacheKey = resolveWinSigningCacheKey(config);
     const nsisInstallerImplementation = shouldBuildWinNsisInstaller(config.to)
-      ? await runSegment("nsis-installer:implementation-hash", hashWinNsisInstallerImplementation)
+      ? await runSegment("nsis-installer:implementation-hash", () => hashWinNsisInstallerImplementation(config))
       : null;
     const nsisSetupMaterialize = [
       { from: "setup.exe", reuse: true, to: paths.setupPath },
