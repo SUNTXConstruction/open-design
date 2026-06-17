@@ -1747,16 +1747,16 @@
   display: flex;
 }
 
-/* Connector entering each node from its predecessor. It spans from the
-   previous node's centre to this node's centre, sitting behind the discs.
-   Muted by default; fills with accent once this step has been reached
-   (which means its predecessor is complete). */
+/* Connector resting in the gap between this node and its predecessor. It
+   stops short of both discs (node radius 13px + 5px clearance) so the line
+   never runs through the numbers. Muted by default; fills with accent once
+   this step has been reached (which means its predecessor is complete). */
 .onboarding-view__steps li:not(:first-child)::before {
   content: '';
   position: absolute;
   top: 13px;
-  inset-inline-end: 50%;
-  inset-inline-start: -50%;
+  inset-inline-start: calc(-50% + 18px);
+  inset-inline-end: calc(50% + 18px);
   height: 2px;
   border-radius: var(--radius-pill);
   background: var(--border);

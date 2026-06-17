@@ -397,19 +397,6 @@ function injectSnapshotBridge(doc: string): string {
 // in an opaque-origin sandboxed frame), keeping it out of normal previews.
 function injectExportCaptureBridge(doc: string): string {
   const script = `<script data-od-export-capture-bridge>(function(){
-  var h2cReady = null;
-  function loadH2C(url){
-    if (window.html2canvas) return Promise.resolve(window.html2canvas);
-    if (h2cReady) return h2cReady;
-    h2cReady = new Promise(function(resolve, reject){
-      var s = document.createElement('script');
-      s.src = url;
-      s.onload = function(){ window.html2canvas ? resolve(window.html2canvas) : reject(new Error('html2canvas unavailable')); };
-      s.onerror = function(){ reject(new Error('html2canvas failed to load')); };
-      (document.head || document.documentElement).appendChild(s);
-    });
-    return h2cReady;
-  }
   function raf(){ return new Promise(function(r){ requestAnimationFrame(function(){ r(); }); }); }
   function settle(){
     var fonts = (document.fonts && document.fonts.ready) ? document.fonts.ready.catch(function(){}) : Promise.resolve();
