@@ -10,7 +10,7 @@
 // coarse status the New Brand modal / onboarding step render.
 
 import { useCallback, useRef, useState } from 'react';
-import type { BrandExtractStartResponse } from '@open-design/contracts';
+import type { BrandExtractStartResponse, BrandStatus } from '@open-design/contracts';
 
 /** Coarse kickoff phase. */
 export type BrandExtractPhase = 'idle' | 'starting' | 'done' | 'error';
@@ -23,6 +23,14 @@ export interface BrandExtractState {
   projectId: string | null;
   /** Seeded conversation the first prompt auto-sends into. */
   conversationId: string | null;
+  /** Outcome of the synchronous programmatic-first pass: `ready` means a usable
+   *  design system was finalized before the response returned; `extracting`
+   *  means it was skipped / blocked and still needs the agent. Null until done. */
+  extractStatus: BrandStatus | null;
+  /** The `user:<id>` design system registered by phase 1, present when ready. */
+  designSystemId: string | null;
+  /** Display name of the extracted brand (falls back to the source hostname). */
+  brandName: string | null;
   /** Human-readable failure reason when `phase === 'error'`. */
   error: string | null;
 }
@@ -32,6 +40,9 @@ const INITIAL_STATE: BrandExtractState = {
   brandId: null,
   projectId: null,
   conversationId: null,
+  extractStatus: null,
+  designSystemId: null,
+  brandName: null,
   error: null,
 };
 
@@ -107,6 +118,9 @@ export function useBrandExtract(): UseBrandExtract {
       brandId: result.id,
       projectId: result.projectId,
       conversationId: result.conversationId,
+      extractStatus: result.status ?? null,
+      designSystemId: result.designSystemId ?? null,
+      brandName: result.brandName ?? null,
       error: null,
     });
     return result;

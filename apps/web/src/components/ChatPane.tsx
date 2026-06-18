@@ -53,6 +53,7 @@ import {
 import { listDesignArtifactCandidates } from './design-files/designArtifacts';
 import type { PluginFolderAgentAction } from './design-files/pluginFolderActions';
 import { Icon, type IconName } from './Icon';
+import { BrandEnrichmentBanner } from './BrandEnrichmentBanner';
 import { repoConnectCopy } from './design-system-github-evidence';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import type { SettingsSection } from './SettingsDialog';
@@ -546,6 +547,14 @@ interface Props {
   // it does based on connector status (open Connectors, or prefill the composer
   // with the import instruction).
   onConnectRepo?: () => void;
+  // True for a programmatically-extracted brand project whose AI enrichment
+  // never ran — surfaces the "Continue with AI optimization" banner in the
+  // empty chat state. Gated to the empty state, so it disappears once a turn
+  // is sent.
+  brandEnrichmentEligible?: boolean;
+  // Runs the optional brand-enrichment turn with the user-picked per-turn skill
+  // ids (may be empty). The parent sends the project's seeded enrichment prompt.
+  onContinueBrandEnrichment?: (skillIds: string[]) => void;
   // Bumped by the parent to push a draft into the composer (used by the
   // "Import repo" CTA). The nonce lets the same text fire more than once.
   composerDraftSignal?: { text: string; nonce: number };
@@ -710,6 +719,8 @@ export function ChatPane({
   connectRepoNeeded,
   githubConnected,
   onConnectRepo,
+  brandEnrichmentEligible,
+  onContinueBrandEnrichment,
   composerDraftSignal,
   petConfig,
   onAdoptPet,
@@ -1873,6 +1884,11 @@ export function ChatPane({
                           {t('chat.startTitle')}
                         </span>
                       </div>
+                      {brandEnrichmentEligible ? (
+                        <BrandEnrichmentBanner
+                          onContinue={(skillIds) => onContinueBrandEnrichment?.(skillIds)}
+                        />
+                      ) : null}
                       <div className="chat-examples" role="list">
                         {pickStarters(projectMetadata, t).map((ex, i) => (
                           <button

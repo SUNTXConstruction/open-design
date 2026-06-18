@@ -69,7 +69,7 @@ import { takeDesignSystemAssetSeed } from '../state/libraryHandoff';
 import { decideAutoOpenAfterWrite } from './auto-open-file';
 import { ChatPane } from './ChatPane';
 import { DesignSystemAssetDropzone } from './DesignSystemAssetDropzone';
-import { BrandReferencePicker } from './BrandReferencePicker';
+import { BrandPickerModal } from './BrandPickerModal';
 import { DesignSystemCreateHero } from './DesignSystemCreateHero';
 import { LibraryPicker } from './LibraryPicker';
 import { notifyConnectorsChanged } from './connectors-events';
@@ -959,24 +959,22 @@ export function DesignSystemCreationFlow({
                 </button>
                 <button
                   type="button"
-                  className="ghost"
+                  className="ghost ds-brand-start-btn"
+                  aria-haspopup="dialog"
                   aria-expanded={brandPickerOpen}
-                  onClick={() => setBrandPickerOpen((open) => !open)}
+                  onClick={() => setBrandPickerOpen(true)}
                 >
                   <Icon name="sparkles" />
                   Start from a brand
                 </button>
               </div>
-              <div className={`accordion-collapsible${brandPickerOpen ? ' open' : ''}`}>
-                <div className="accordion-collapsible-inner">
-                  <div className="ds-brand-reference-panel" style={{ maxHeight: 380, overflowY: 'auto' }}>
-                    <BrandReferencePicker
-                      variant="compact"
-                      onPick={(brand) => handlePickBrandReference(brand.domain)}
-                    />
-                  </div>
-                </div>
-              </div>
+              <BrandPickerModal
+                open={brandPickerOpen}
+                onClose={() => setBrandPickerOpen(false)}
+                onPick={(brand) => handlePickBrandReference(brand.domain)}
+                title="Start from a brand"
+                subtitle="Search hundreds of brands — pick one and we'll add its site as a style reference."
+              />
               {state.sourceUrls.length > 0 ? (
                 <div className="ds-source-link-list" aria-label="Added source links">
                   {state.sourceUrls.map((url) => {

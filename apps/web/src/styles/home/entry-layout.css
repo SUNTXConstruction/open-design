@@ -1972,47 +1972,6 @@
   padding: 0 2px;
 }
 
-/* Title row can carry a trailing action (e.g. the extract step's "Skip for
-   now") so the escape hatch is visible at the top, not buried below the grid. */
-.onboarding-view__panel-head-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.onboarding-view__panel-head-trailing {
-  flex: none;
-  padding-top: 4px;
-}
-
-/* Quiet text-button skip affordance: clearly available, never competing with
-   the primary CTA. */
-.onboarding-view__skip-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 5px 8px;
-  border: 0;
-  border-radius: var(--radius-sm, 8px);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color 160ms cubic-bezier(0.23, 1, 0.32, 1),
-    background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-.onboarding-view__skip-link:hover:not(:disabled) {
-  color: var(--accent);
-  background: var(--accent-tint, color-mix(in srgb, var(--accent) 10%, transparent));
-}
-.onboarding-view__skip-link:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .onboarding-view__panel-head h2 {
   margin: 0;
   color: var(--text-strong);
@@ -2063,22 +2022,35 @@
   line-height: 1.45;
 }
 
-/* The primary navigation pair (Back / Finish) pins to the bottom of the
-   scrolling onboarding modal, so on long steps like the design-system gallery
-   the user can finish or go back at a glance without scrolling to the floor.
-   On short steps there is no scroll, so it simply rests after the content. */
 .onboarding-view__actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 6;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   justify-content: flex-end;
-  margin-top: 8px;
-  padding: 14px 0 calc(14px + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(to top, var(--bg) 58%, transparent);
+  margin-top: 4px;
+}
+
+/* On the design-system step the completion CTA sits at the top, right under the
+   header, so the user sees it immediately instead of scrolling past the brand
+   gallery. */
+.onboarding-view__actions--top {
+  margin-top: 0;
+}
+
+/* "Back" lives down beside the URL "Extract design system" action rather than
+   competing with the top CTA. The extract button keeps the remaining width. */
+.onboarding-view__extract-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+.onboarding-view__extract-row .onboarding-view__mini-button {
+  flex: 1 1 auto;
+}
+.onboarding-view__extract-back {
+  flex: none;
 }
 
 .onboarding-view__action-status {

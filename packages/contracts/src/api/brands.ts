@@ -161,6 +161,19 @@ export interface BrandExtractStartResponse {
   conversationId: string;
   /** The normalized source URL the browser tab was opened to. */
   sourceUrl: string;
+  /**
+   * Outcome of the synchronous programmatic-first pass. `ready` means a usable
+   * design system was harvested, synthesized, finalized and registered before
+   * this response returned (the brand page is rendered, NOT a skeleton); callers
+   * can navigate straight into a finished result. `extracting` means phase 1 was
+   * skipped or did not complete (blocked / slow origin) and the brand still needs
+   * the agent to drive it — callers should not present it as a finished system.
+   */
+  status: BrandStatus;
+  /** The `user:<id>` design system registered by phase 1, present when `ready`. */
+  designSystemId?: string;
+  /** Display name of the extracted brand (falls back to the source hostname). */
+  brandName?: string;
 }
 
 /**

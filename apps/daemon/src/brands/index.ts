@@ -25,6 +25,7 @@ import type {
   BrandDetailResponse,
   BrandFinalizeResponse,
   BrandMeta,
+  BrandStatus,
   BrandSummary,
   ProjectMetadata,
 } from '@open-design/contracts';
@@ -122,6 +123,12 @@ export interface StartBrandExtractionResult {
   projectId: string;
   conversationId: string;
   sourceUrl: string;
+  /** `ready` when the synchronous programmatic pass finalized + registered a
+   *  design system before returning; `extracting` when it was skipped or did
+   *  not complete and the agent still needs to drive the extraction. */
+  status: BrandStatus;
+  designSystemId?: string;
+  brandName?: string;
 }
 
 /** Normalize a user-typed URL: prepend https:// when no scheme is present;
@@ -275,6 +282,7 @@ export async function startBrandExtraction(
   // agent's auto-sent prompt then runs as the async AI enrichment pass. Bounded
   // and best-effort: a slow / blocked site (or any failure) leaves the brand
   // `extracting` and the agent drives the extraction from the scaffold instead.
+  let finalized: BrandFinalizeResponse | null = null;
   if (runProgrammatic && opts.userDesignSystemsRoot) {
     const programmaticOptions: RunProgrammaticExtractionOptions = {
       id,
@@ -291,13 +299,27 @@ export async function startBrandExtraction(
     if (opts.dataDir) programmaticOptions.dataDir = opts.dataDir;
     if (opts.prefetch) programmaticOptions.prefetch = opts.prefetch;
     try {
-      await withTimeout(runProgrammaticExtraction(programmaticOptions), PROGRAMMATIC_EXTRACT_TIMEOUT_MS);
+      finalized = await withTimeout(
+        runProgrammaticExtraction(programmaticOptions),
+        PROGRAMMATIC_EXTRACT_TIMEOUT_MS,
+      );
     } catch (err) {
       console.warn(`[brand] programmatic extraction failed for ${id} — falling back to agent`, err);
     }
   }
 
-  return { id, projectId, conversationId, sourceUrl: url };
+  // `ready` only when phase 1 actually finalized + registered a design system,
+  // so the caller can tell a finished result from the `extracting` scaffold and
+  // decide whether to present it as done or hand off to the agent.
+  return {
+    id,
+    projectId,
+    conversationId,
+    sourceUrl: url,
+    status: finalized ? 'ready' : 'extracting',
+    ...(finalized?.designSystemId ? { designSystemId: finalized.designSystemId } : {}),
+    brandName: finalized?.brand?.name ?? host,
+  };
 }
 
 /** Upper bound on the synchronous programmatic-first extraction so a slow or

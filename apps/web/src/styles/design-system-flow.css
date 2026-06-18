@@ -259,11 +259,13 @@
   color: var(--text-muted);
 }
 .ds-resource-inline {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
 }
 .ds-resource-inline input {
+  flex: 1 1 220px;
   min-width: 0;
   min-height: 38px;
   border: 1px solid var(--border);
@@ -274,6 +276,39 @@
   box-shadow: var(--shadow-xs);
   font: inherit;
   font-size: 13px;
+}
+/* Compact secondary action that opens the brand-picker modal — sits inline with
+   the URL input + Add rather than spanning a full row. */
+.ds-resource-inline .ds-brand-start-btn {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ds-resource-inline .ds-brand-start-btn:hover {
+  color: var(--text-strong);
+}
+.ds-resource-inline .ds-brand-start-btn svg {
+  color: var(--accent);
+}
+/* The Advanced disclosure sits flush with the asset row above it; give it the
+   same generous padding as the resource rows so it does not read as cramped. */
+.ds-resource-advanced {
+  padding: 16px 18px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ds-resource-advanced-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-resource-advanced .ds-resource-row {
+  padding-left: 0;
+  padding-right: 0;
 }
 .ds-source-link-list {
   grid-column: 1 / -1;

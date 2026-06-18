@@ -1027,11 +1027,24 @@ function OnboardingView({
     run: runBrandExtract,
   } = useBrandExtract();
   const brandExtractActive = brandExtractState.phase === 'starting';
-  const brandExtractDone = brandExtractState.phase === 'done';
+  // `done` only counts as a success once the programmatic-first pass actually
+  // produced a finished design system (status 'ready'). A 'done' phase with a
+  // non-ready status means the site was blocked / too slow to harvest, so we do
+  // NOT navigate into a skeleton — we surface that and let the user try another.
+  const brandExtractReady =
+    brandExtractState.phase === 'done' && brandExtractState.extractStatus === 'ready';
+  const brandExtractNotReady =
+    brandExtractState.phase === 'done' && brandExtractState.extractStatus !== 'ready';
+  const brandExtractDone = brandExtractReady;
   const brandExtractFailed = brandExtractState.phase === 'error';
-  // Clicking Extract here behaves exactly like the Brands tab: stand up the
-  // extraction project, then finish onboarding and open it so the agent runs
-  // the extraction live (with a browser tab on the target site).
+  // The programmatic-first extraction runs server-side and finishes BEFORE the
+  // POST /api/brands response resolves, so by the time `run` returns the design
+  // system is already harvested, synthesized, finalized and registered. We only
+  // navigate once it is actually `ready` — landing the user on a finished brand
+  // page, never a still-"Extracting…" skeleton. Crucially we do NOT set
+  // `od:auto-send-first`: the AI agent never runs automatically here. The
+  // in-project "Continue with AI optimization" banner is the opt-in path to
+  // refine the design system with curated design-system skills.
   const handleOnboardingBrandExtract = useCallback(
     async (explicitUrl?: string) => {
       // An explicit URL (a picked reference brand) wins over the input, whose
@@ -1040,11 +1053,10 @@ function OnboardingView({
       if (!trimmed || brandExtractActive) return;
       const result = await runBrandExtract(trimmed);
       if (!result) return;
-      try {
-        window.sessionStorage.setItem(`od:auto-send-first:${result.projectId}`, '1');
-      } catch {
-        // Private-mode storage failures should not block navigation.
-      }
+      // Blocked / slow origin → the programmatic pass could not finish. Keep the
+      // user on the step (the hook's state surfaces the not-ready message) so
+      // they can try another site rather than dropping into a skeleton project.
+      if (result.status !== 'ready') return;
       onFinish();
       navigate({
         kind: 'project',
@@ -2421,6 +2433,14 @@ function OnboardingView({
                     {brandExtractState.error || t('brand.failed')}
                   </span>
                 ) : null}
+                {brandExtractNotReady ? (
+                  <span
+                    className="onboarding-view__action-status is-error"
+                    role="alert"
+                  >
+                    {t('brand.failed')}
+                  </span>
+                ) : null}
               </div>
               <div
                 style={{
@@ -2443,47 +2463,49 @@ function OnboardingView({
             </div>
           ) : null}
 
-          <div className="onboarding-view__actions">
-            {step === 0 && amrLoginError ? (
-              <span className="onboarding-view__action-status is-error" role="alert">
-                {amrLoginError}
-              </span>
-            ) : null}
-            {step > 0 ? (
+          {step === 3 ? null : (
+            <div className="onboarding-view__actions">
+              {step === 0 && amrLoginError ? (
+                <span className="onboarding-view__action-status is-error" role="alert">
+                  {amrLoginError}
+                </span>
+              ) : null}
+              {step > 0 ? (
+                <button
+                  type="button"
+                  className="onboarding-view__secondary"
+                  onClick={handleBackWithTracking}
+                  disabled={onboardingNavigationLocked}
+                >
+                  {t('settings.onboardingBack')}
+                </button>
+              ) : null}
+              {step === 0 && amrLoginPending ? (
+                <button
+                  type="button"
+                  className="onboarding-view__secondary"
+                  onClick={handleCancelAmrLogin}
+                  disabled={amrLoginCancelPending}
+                >
+                  {t('settings.amrCancelSignIn')}
+                </button>
+              ) : null}
               <button
                 type="button"
-                className="onboarding-view__secondary"
-                onClick={handleBackWithTracking}
-                disabled={onboardingNavigationLocked}
+                className="onboarding-view__primary"
+                onClick={handlePrimaryAction}
+                disabled={
+                  amrLoginPending ||
+                  amrLoginCancelPending ||
+                  newsletterSubmitting ||
+                  connectStepBlocked
+                }
+                aria-busy={newsletterSubmitting ? true : undefined}
               >
-                {t('settings.onboardingBack')}
+                <span>{primaryActionLabel}</span>
               </button>
-            ) : null}
-            {step === 0 && amrLoginPending ? (
-              <button
-                type="button"
-                className="onboarding-view__secondary"
-                onClick={handleCancelAmrLogin}
-                disabled={amrLoginCancelPending}
-              >
-                {t('settings.amrCancelSignIn')}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="onboarding-view__primary"
-              onClick={handlePrimaryAction}
-              disabled={
-                amrLoginPending ||
-                amrLoginCancelPending ||
-                newsletterSubmitting ||
-                connectStepBlocked
-              }
-              aria-busy={newsletterSubmitting ? true : undefined}
-            >
-              <span>{primaryActionLabel}</span>
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </section>

@@ -5753,6 +5753,20 @@ export function ProjectView({
               connectRepoNeeded={connectRepoNeeded}
               githubConnected={githubConnected}
               onConnectRepo={handleConnectRepo}
+              brandEnrichmentEligible={
+                project.metadata?.kind === 'brand' && !autoSendFirstMessageRef.current
+              }
+              onContinueBrandEnrichment={(skillIds) => {
+                // Programmatically-extracted brand projects open with a finished
+                // design system but no agent run. This sends the seeded
+                // enrichment prompt with the user's chosen per-turn skills so the
+                // agent refines the SAME registered design system in place.
+                const seed = (
+                  project.pendingPrompt?.trim() ||
+                  'Refine and enrich this design system: sharpen the palette, typography, logo and components from the source site, then update the registered design system in place.'
+                );
+                void handleSend(seed, [], [], skillIds.length > 0 ? { skillIds } : undefined);
+              }}
               composerDraftSignal={composerDraftSignal}
               petConfig={config.pet}
               onAdoptPet={onAdoptPetInline}
