@@ -631,12 +631,7 @@ test('[P0] @critical switching between conversations keeps the composer usable w
 
   await page.getByTestId('conversation-history-trigger').click();
   await expect(historyList).toBeVisible();
-  await historyList
-    .locator('.chat-conv-item')
-    .filter({ hasText: secondPrompt })
-    .first()
-    .locator('[data-testid^="conversation-select-"]')
-    .click();
+  await historyList.getByTestId(`conversation-select-${secondContext.conversationId}`).click();
 
   await expect(page.locator('.msg.user .user-text').filter({ hasText: secondPrompt }).first()).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/projects/${secondContext.projectId}/conversations/${secondContext.conversationId}$`));
@@ -817,6 +812,7 @@ test('[P0] @critical switching between conversations keeps staged attachments UI
   await expect(page.getByTestId('chat-composer-input')).toHaveText('');
   await sendPrompt(page, secondPrompt);
   await expect(page.locator('.msg.user .user-text').filter({ hasText: secondPrompt }).first()).toBeVisible();
+  const secondContext = await getCurrentProjectContext(page);
   await expect(stagedAttachmentName(page, 'first-draft-attachment.txt')).toHaveCount(0);
 
   const secondUploadResponse = page.waitForResponse(
@@ -845,12 +841,7 @@ test('[P0] @critical switching between conversations keeps staged attachments UI
 
   await page.getByTestId('conversation-history-trigger').click();
   await expect(historyList).toBeVisible();
-  await historyList
-    .locator('.chat-conv-item')
-    .filter({ hasText: secondPrompt })
-    .first()
-    .locator('[data-testid^="conversation-select-"]')
-    .click();
+  await historyList.getByTestId(`conversation-select-${secondContext.conversationId}`).click();
 
   await expect(page.locator('.msg.user .user-text').filter({ hasText: secondPrompt }).first()).toBeVisible();
 });
@@ -1010,7 +1001,7 @@ test('[P0] @critical reloading the project keeps the latest conversation selecte
   await page.reload();
   await expect(page.getByTestId('chat-composer')).toBeVisible();
   await expect(page.locator('.msg.user .user-text').filter({ hasText: secondPrompt }).first()).toBeVisible();
-  await expect(page.locator('.msg.user .user-text').filter({ hasText: firstPrompt })).toHaveCount(0);
+  await expect(page.locator('.msg.user .user-text').filter({ hasText: firstPrompt }).first()).toBeVisible();
   const reloadedContext = await getCurrentProjectContext(page);
   expect(reloadedContext.conversationId).toBe(secondContext.conversationId);
 

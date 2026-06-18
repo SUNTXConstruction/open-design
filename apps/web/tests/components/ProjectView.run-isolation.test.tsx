@@ -710,6 +710,7 @@ describe('ProjectView conversation run isolation', () => {
       undefined,
       {
         seedFromConversationId: 'conv-a',
+        seedMessages: conversationAMessages,
       },
     );
   });
@@ -761,6 +762,7 @@ describe('ProjectView conversation run isolation', () => {
       undefined,
       {
         seedFromConversationId: 'conv-a',
+        seedMessages: [userMessage, updatedAssistant],
       },
     );
   });
