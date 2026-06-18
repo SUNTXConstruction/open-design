@@ -1522,14 +1522,53 @@ interface AgentSink {
   getText: () => string;
   getStderrTail: () => string;
   appendRawStdout: (chunk: string) => void;
+  getRawStdout: () => string;
   getRawStdoutTail: () => string;
+  sawTerminalCompletion: () => boolean;
   dispose: () => void;
+}
+
+function isTerminalCompletionStopReason(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 0 && value !== 'tool_use';
+}
+
+function parseClaudeResultFrame(stdout: string): {
+  resultText: string;
+  stopReason: string | null;
+  isError: boolean;
+} | null {
+  let parsed: {
+    resultText: string;
+    stopReason: string | null;
+    isError: boolean;
+  } | null = null;
+  for (const line of stdout.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed) as Record<string, unknown>;
+      if (obj.type !== 'result') continue;
+      parsed = {
+        resultText: typeof obj.result === 'string' ? obj.result.trim() : '',
+        stopReason:
+          (typeof obj.stop_reason === 'string' && obj.stop_reason) ||
+          (typeof obj.terminal_reason === 'string' && obj.terminal_reason) ||
+          null,
+        isError: Boolean(obj.is_error),
+      };
+    } catch {
+      // Non-JSON stdout falls back to the normal diagnostic path.
+    }
+  }
+  return parsed;
 }
 
 export function createAgentSink(): AgentSink {
   let buffer = '';
   let stderrTail = '';
+  let rawStdout = '';
   let rawStdoutTail = '';
+  let terminalCompletionSeen = false;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let resolveResult!: (value: AgentSinkResult) => void;
   let resolveStreamError!: (value: Error) => void;
@@ -1576,6 +1615,7 @@ export function createAgentSink(): AgentSink {
 
   const appendRawStdout = (chunk: string) => {
     if (typeof chunk === 'string' && chunk.length > 0) {
+      rawStdout = (rawStdout + chunk).slice(-16_384);
       rawStdoutTail = (rawStdoutTail + chunk).slice(-400);
     }
   };
@@ -1606,6 +1646,11 @@ export function createAgentSink(): AgentSink {
         consumeText(delta);
       } else if (type === 'text' && typeof text === 'string') {
         consumeText(text);
+      } else if (
+        (type === 'turn_end' || type === 'usage') &&
+        isTerminalCompletionStopReason(data.stopReason)
+      ) {
+        terminalCompletionSeen = true;
       }
       return;
     }
@@ -1635,7 +1680,9 @@ export function createAgentSink(): AgentSink {
     getText: () => buffer,
     getStderrTail: () => stderrTail,
     appendRawStdout,
+    getRawStdout: () => rawStdout,
     getRawStdoutTail: () => rawStdoutTail,
+    sawTerminalCompletion: () => terminalCompletionSeen,
     dispose: () => {
       if (debounceTimer) {
         clearTimeout(debounceTimer);
@@ -2179,6 +2226,12 @@ async function testAgentConnectionInternal(
       await delay(AGENT_STDOUT_DRAIN_MS);
       const latencyMs = Date.now() - start;
       const buffered = sink.getText().trim();
+      const claudeResult = input.agentId === 'claude'
+        ? parseClaudeResultFrame(sink.getRawStdout())
+        : null;
+      const parsedClaudeResultText =
+        claudeResult && !claudeResult.isError ? claudeResult.resultText.trim() : '';
+      const visibleText = buffered || parsedClaudeResultText;
       // ACP agents that don't shut down on stdin.end() are terminated after a
       // clean prompt completion. Depending on the ACP bridge, this can surface
       // either as SIGTERM or as a normal code 130 teardown. For those exact
@@ -2201,15 +2254,25 @@ async function testAgentConnectionInternal(
           (winner.code === null && winner.signal === 'SIGTERM') ||
           (winner.code === 130 && winner.signal === null)
         );
+      const claudeCompletedTurn =
+        input.agentId === 'claude' &&
+        (
+          sink.sawTerminalCompletion() ||
+          (
+            !!claudeResult &&
+            !claudeResult.isError &&
+            isTerminalCompletionStopReason(claudeResult.stopReason)
+          )
+        );
       const exitedCleanly =
-        (winner.code === 0 && !winner.signal) || acpForcedShutdown;
-      if (buffered) {
-        const rawSample = truncateSample(buffered);
+        (winner.code === 0 && !winner.signal) || acpForcedShutdown || claudeCompletedTurn;
+      if (visibleText) {
+        const rawSample = truncateSample(visibleText);
         const exitInfo = { code: winner.code, signal: winner.signal };
         if (rawSample && isLikelyModelErrorText(rawSample)) {
-          return resultFromAgentText(buffered, exitInfo);
+          return resultFromAgentText(visibleText, exitInfo);
         }
-        if (exitedCleanly) return resultFromAgentText(buffered, exitInfo);
+        if (exitedCleanly) return resultFromAgentText(visibleText, exitInfo);
       }
       const stderrTail = sink.getStderrTail().trim();
       const rawStdoutTail = sink.getRawStdoutTail().trim();
@@ -2276,7 +2339,7 @@ async function testAgentConnectionInternal(
         exitCode: winner.code,
         signal: winner.signal,
         stderrTail,
-        stdoutTail: rawStdoutTail || buffered,
+        stdoutTail: sink.getRawStdout() || rawStdoutTail || visibleText,
         env,
         resolvedBin: executableResolution.selectedPath,
       });
