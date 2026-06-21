@@ -58,6 +58,13 @@ run_playwright() {
   npx --yes "playwright@${PLAYWRIGHT_VERSION}" "$@"
 }
 
+ensure_managed_chromium() {
+  if ! run_playwright install chromium; then
+    echo "error: failed to install Playwright managed Chromium; cannot render PNG export" >&2
+    exit 1
+  fi
+}
+
 if [[ "$COUNT" == "all" ]]; then
   COUNT="$(grep -c 'class="slide"' "$FILE" || true)"
   [[ -z "$COUNT" || "$COUNT" -lt 1 ]] && COUNT=1
@@ -69,6 +76,8 @@ if [[ -z "$OUT" ]]; then
     mkdir -p "$OUT"
   fi
 fi
+
+ensure_managed_chromium
 
 render_one() {
   local url="$1" target="$2"
