@@ -2629,6 +2629,11 @@ export interface Dict {
   'fileViewer.exportPptx': string;
   'fileViewer.exportPptxEditable': string;
   'fileViewer.exportPptxEditableHint': string;
+  'fileViewer.exportPptxModalSubtitle': string;
+  'fileViewer.exportPptxScreenshot': string;
+  'fileViewer.exportPptxScreenshotHint': string;
+  'fileViewer.exportPptxConfirm': string;
+  'fileViewer.exportPptxRecommended': string;
   'fileViewer.openInNewTab': string;
   'fileViewer.copyPath': string;
   'fileViewer.copied': string;

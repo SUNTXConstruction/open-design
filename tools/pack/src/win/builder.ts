@@ -189,6 +189,12 @@ async function runElectronBuilderRaw(
     extraResources: [
       { from: paths.resourceRoot, to: "open-design" },
       { from: paths.packagedConfigPath, to: "open-design-config.json" },
+      // Vendored dom-to-pptx browser bundle for editable PPTX export (read from
+      // process.resourcesPath by the desktop main at runtime).
+      {
+        from: join(process.cwd(), "apps/desktop/vendor/dom-to-pptx/dom-to-pptx.bundle.js"),
+        to: "dom-to-pptx.bundle.js",
+      },
     ],
     files: [...ELECTRON_BUILDER_FILE_PATTERNS],
     forceCodeSigning: false,

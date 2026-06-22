@@ -8,18 +8,23 @@ import type { DesktopRenderSlidesInput, DesktopRenderSlidesResult } from "@open-
 import { waitForPrintableContent } from "./pdf-export.js";
 
 // Vendored dom-to-pptx browser UMD (apps/desktop/vendor/dom-to-pptx). Loaded
-// once and injected into the render window for editable PPTX export. Resolved
-// relative to this module (dist/main/ at runtime, src/main/ in dev) by walking
-// up to the apps/desktop root — works from the tsc dist output and the packaged
-// asar alike, as long as vendor/ ships with the app.
+// once and injected into the render window for editable PPTX export. The packaged
+// app ships it via electron-builder `extraResources` (next to the app under
+// Resources/, i.e. `process.resourcesPath`); in dev it is resolved relative to
+// the tsc dist/main output by walking up to apps/desktop/vendor.
 let cachedDomToPptxBundle: string | null = null;
 async function loadDomToPptxBundle(): Promise<string> {
   if (cachedDomToPptxBundle != null) return cachedDomToPptxBundle;
   const here = path.dirname(fileURLToPath(import.meta.url));
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
   const candidates = [
+    // Packaged: extraResources copies the bundle to Resources/.
+    ...(resourcesPath ? [path.join(resourcesPath, "dom-to-pptx.bundle.js")] : []),
+    // Dev (tsc): apps/desktop/dist/main -> apps/desktop/vendor/...
     path.resolve(here, "../../vendor/dom-to-pptx/dom-to-pptx.bundle.js"),
     path.resolve(here, "../../../vendor/dom-to-pptx/dom-to-pptx.bundle.js"),
-    path.resolve(here, "../vendor/dom-to-pptx/dom-to-pptx.bundle.js"),
+    // Packaged fallback: next to the prebundled main (app/prebundled/).
+    path.resolve(here, "dom-to-pptx.bundle.js"),
   ];
   for (const candidate of candidates) {
     try {
