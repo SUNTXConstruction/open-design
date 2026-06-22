@@ -104,7 +104,7 @@ jobs:
         if: ${{ steps.handoffs.outputs.present == 'true' && steps.bot-secrets.outputs.present == 'true' }}
         id: bot-token
         continue-on-error: true
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}

@@ -251,7 +251,7 @@ jobs:
       - name: Generate Open Design bot token
         if: steps.detect.outputs.count != '0' && steps.config.outputs.gsc == 'true' && steps.config.outputs.bot == 'true'
         id: open-design-bot-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
