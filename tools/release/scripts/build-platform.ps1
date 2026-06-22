@@ -35,7 +35,10 @@ $ErrorActionPreference = "Stop"
 $startedAt = Get-Date
 $timings = @()
 $failureMessage = $null
-$ReleaseChannel = if ([string]::IsNullOrWhiteSpace($env:RELEASE_CHANNEL)) { "beta" } else { $env:RELEASE_CHANNEL }
+$ReleaseChannel = [string]$env:RELEASE_CHANNEL
+if ([string]::IsNullOrWhiteSpace($ReleaseChannel)) {
+  throw "RELEASE_CHANNEL is required"
+}
 
 function Format-Duration([int64]$Milliseconds) {
   if ($Milliseconds -ge 60000) {
@@ -102,7 +105,7 @@ function Write-Index([string]$Status) {
     branch = $env:RELEASE_BRANCH
     buildJsonPath = $BuildJsonPath
     cacheDir = $CacheDir
-    channel = "beta"
+    channel = $ReleaseChannel
     commit = $env:RELEASE_COMMIT
     durationMs = $durationMs
     failure = $script:failureMessage
@@ -204,6 +207,23 @@ function Validate-WinLauncherPayloadArchive([string]$PayloadPath, [string]$Expec
   }
 }
 
+function Resolve-LocalUpdateVersion([string]$Channel, [string]$Version) {
+  if ($Channel -eq "stable") {
+    $stableMatch = [System.Text.RegularExpressions.Regex]::Match($Version, "^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$")
+    if (-not $stableMatch.Success) {
+      throw "full Windows stable smoke requires stable version x.y.z; got $Version"
+    }
+    return "{0}.{1}.{2}" -f $stableMatch.Groups['major'].Value, $stableMatch.Groups['minor'].Value, ([int]$stableMatch.Groups['patch'].Value + 1)
+  }
+
+  $releaseChannelPattern = [System.Text.RegularExpressions.Regex]::Escape($Channel)
+  $match = [System.Text.RegularExpressions.Regex]::Match($Version, "^(?<base>\d+\.\d+\.\d+)-$releaseChannelPattern\.(?<number>\d+)$")
+  if (-not $match.Success) {
+    throw "full Windows smoke requires a counted version like x.y.z-$Channel.N; got $Version"
+  }
+  return "{0}-{1}.{2}" -f $match.Groups['base'].Value, $Channel, ([int]$match.Groups['number'].Value + 1)
+}
+
 New-Item -ItemType Directory -Force -Path $WorkRoot, $ToolsPackDir, $CacheDir, $ReportRoot, (Split-Path -Parent $BuildJsonPath), (Split-Path -Parent $IndexPath), (Split-Path -Parent $OutputsPath) | Out-Null
 Remove-Item -LiteralPath $BuildJsonPath -Force -ErrorAction SilentlyContinue
 
@@ -255,12 +275,7 @@ try {
   $hasExternalUpdateArtifactPair = -not [string]::IsNullOrWhiteSpace($externalUpdateArtifactPath) -and -not [string]::IsNullOrWhiteSpace($externalUpdateVersion)
 
   if ($SmokeMode -eq "full" -and -not $hasExternalUpdateMetadata -and -not $hasExternalUpdateArtifactPair) {
-    $releaseChannelPattern = [System.Text.RegularExpressions.Regex]::Escape($ReleaseChannel)
-    $match = [System.Text.RegularExpressions.Regex]::Match($ReleaseVersion, "^(?<base>\d+\.\d+\.\d+)-$releaseChannelPattern\.(?<number>\d+)$")
-    if (-not $match.Success) {
-      throw "full Windows smoke requires a counted version like x.y.z-$ReleaseChannel.N; got $ReleaseVersion"
-    }
-    $localUpdateVersion = "{0}-{1}.{2}" -f $match.Groups['base'].Value, $ReleaseChannel, ([int]$match.Groups['number'].Value + 1)
+    $localUpdateVersion = Resolve-LocalUpdateVersion -Channel $ReleaseChannel -Version $ReleaseVersion
     $fixtureDir = Join-Path $WorkRoot "tools-pack-update-fixture"
     $fixtureJsonPath = Join-Path $WorkRoot "windows-tools-pack-update-build.json"
     $updateArgs = @(
@@ -305,6 +320,7 @@ try {
       OD_PACKAGED_E2E_RELEASE_VERSION = $env:OD_PACKAGED_E2E_RELEASE_VERSION
       OD_PACKAGED_E2E_REPORT_DIR = $env:OD_PACKAGED_E2E_REPORT_DIR
       OD_PACKAGED_E2E_TOOLS_PACK_DIR = $env:OD_PACKAGED_E2E_TOOLS_PACK_DIR
+      OD_PACKAGED_E2E_WIN_UPDATE_FIXTURE = $env:OD_PACKAGED_E2E_WIN_UPDATE_FIXTURE
       OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH = $env:OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH
       OD_PACKAGED_E2E_WIN_UPDATE_VERSION = $env:OD_PACKAGED_E2E_WIN_UPDATE_VERSION
       OD_PACKAGED_E2E_WIN_UPDATE_BUILD_JSON_PATH = $env:OD_PACKAGED_E2E_WIN_UPDATE_BUILD_JSON_PATH
@@ -319,6 +335,7 @@ try {
       $env:OD_PACKAGED_E2E_REPORT_DIR = $ReportRoot
       $env:OD_PACKAGED_E2E_TOOLS_PACK_DIR = $ToolsPackDir
       if (-not [string]::IsNullOrWhiteSpace($localUpdateArtifactPath)) {
+        $env:OD_PACKAGED_E2E_WIN_UPDATE_FIXTURE = "tools-serve"
         $env:OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH = $localUpdateArtifactPath
         $env:OD_PACKAGED_E2E_WIN_UPDATE_VERSION = $localUpdateVersion
         $env:OD_PACKAGED_E2E_WIN_UPDATE_BUILD_JSON_PATH = Join-Path $WorkRoot "windows-tools-pack-update-build.json"
@@ -339,7 +356,7 @@ try {
   }
 
   Write-Index "success"
-  Write-Host "beta build index: $IndexPath"
+  Write-Host "$ReleaseChannel build index: $IndexPath"
 } catch {
   if ($script:failureMessage -eq $null) {
     $script:failureMessage = $_.Exception.Message
@@ -347,7 +364,7 @@ try {
   try {
     Write-Index "failed"
   } catch {
-    Write-Warning "failed to write beta build index: $($_.Exception.Message)"
+    Write-Warning "failed to write $ReleaseChannel build index: $($_.Exception.Message)"
   }
   throw
 }

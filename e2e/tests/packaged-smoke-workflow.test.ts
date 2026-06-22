@@ -372,13 +372,24 @@ describe("packaged smoke workflow", () => {
     expect(betaWinJob).toContain("tools-pack win validate-payload");
     expect(betaWinJob).toContain("pnpm exec tsx scripts/release-smoke.ts win specs/win.spec.ts");
     const betaBuildScript = await readFile(releaseBetaPosixBuildScriptPath, "utf8");
-    expect(betaBuildScript).toContain('release_channel="${RELEASE_CHANNEL:-beta}"');
+    expect(betaBuildScript).toContain("required RELEASE_CHANNEL");
+    expect(betaBuildScript).toContain('release_channel="$RELEASE_CHANNEL"');
+    expect(betaBuildScript).not.toContain('RELEASE_CHANNEL:-beta');
     expect(betaBuildScript).toContain('OD_PACKAGED_E2E_RELEASE_CHANNEL="$release_channel"');
     expect(betaBuildScript).toContain('OD_PACKAGED_E2E_RELEASE_VERSION="$RELEASE_VERSION"');
+    expect(betaBuildScript).toContain('OD_PACKAGED_E2E_MAC_UPDATE_FIXTURE="${update_build_json_path:+tools-serve}"');
     const betaWindowsBuildScript = await readFile(releaseBetaWindowsBuildScriptPath, "utf8");
-    expect(betaWindowsBuildScript).toContain('$ReleaseChannel = if ([string]::IsNullOrWhiteSpace($env:RELEASE_CHANNEL)) { "beta" } else { $env:RELEASE_CHANNEL }');
+    expect(betaWindowsBuildScript).toContain('throw "RELEASE_CHANNEL is required"');
+    expect(betaWindowsBuildScript).not.toContain('"beta" } else { $env:RELEASE_CHANNEL }');
     expect(betaWindowsBuildScript).toContain('Test-JsonString $manifest.channel "channel" $ReleaseChannel');
+    expect(betaWindowsBuildScript).toContain('channel = $ReleaseChannel');
     expect(betaWindowsBuildScript).toContain('$env:OD_PACKAGED_E2E_RELEASE_CHANNEL = $ReleaseChannel');
+    expect(betaWindowsBuildScript).toContain('$env:OD_PACKAGED_E2E_WIN_UPDATE_FIXTURE = "tools-serve"');
+
+    expectWindowsUpdaterSmokeContract(releaseBetaWorkflow, "beta");
+    expectWindowsUpdaterSmokeContract(releasePreviewWorkflow, "preview");
+    expectWindowsUpdaterSmokeContract(releasePrereleaseWorkflow, "prerelease");
+    expectWindowsUpdaterSmokeContract(releaseStableWorkflow, "stable");
   });
 
   it("[P2] keeps counted release workflow calls on a consistent ref and output contract", async () => {
@@ -1290,6 +1301,25 @@ function expectChannelWorkflowNamespaces(
   if (options.hasLinuxSmoke) {
     expect(workflow).toContain(`OD_PACKAGED_E2E_NAMESPACE: ${namespace}-linux`);
   }
+}
+
+function expectWindowsUpdaterSmokeContract(workflow: string, channel: "beta" | "preview" | "prerelease" | "stable"): void {
+  expect(workflow).toContain("win_x64_smoke_mode:");
+  expect(workflow).toContain("win_x64_update_metadata_url:");
+  expect(workflow).toContain("win_x64_update_target_version:");
+  expect(workflow).toMatch(/win_x64_smoke_mode:[\s\S]*?options:[\s\S]*?- skip[\s\S]*?- core[\s\S]*?- full[\s\S]*?default: core/);
+  expect(workflow).toContain("OD_PACKAGED_E2E_WIN_SMOKE_PROFILE: ${{ inputs.win_x64_smoke_mode }}");
+  expect(workflow).toContain("OD_PACKAGED_E2E_WIN_UPDATE_FIXTURE: ${{ inputs.win_x64_smoke_mode == 'full' && inputs.win_x64_update_metadata_url == '' && inputs.win_x64_update_target_version == '' && 'tools-serve' || '' }}");
+  expect(workflow).toContain("OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL: ${{ inputs.win_x64_update_metadata_url }}");
+  expect(workflow).toContain("OD_PACKAGED_E2E_WIN_UPDATE_VERSION: ${{ inputs.win_x64_update_target_version }}");
+  if (channel === "stable") {
+    expect(workflow).toContain("Build stable win_x64 update fixture");
+    expect(workflow).toContain('full Windows stable smoke requires stable version x.y.z');
+  } else {
+    expect(workflow).toContain(`Build ${channel} win_x64 update fixture`);
+    expect(workflow).toContain(`full Windows smoke requires a counted ${channel} version`);
+  }
+  expect(workflow).not.toContain("OD_PACKAGED_E2E_WIN_SMOKE_PROFILE: core");
 }
 
 function expectCountedReleaseWorkflowCallContract(workflow: string, channel: "preview" | "prerelease"): void {

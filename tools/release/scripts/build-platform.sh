@@ -185,6 +185,7 @@ NODE
 required BUILD_JSON_PATH
 required BUILD_LOG_PATH
 required RELEASE_BUILD_TARGET
+required RELEASE_CHANNEL
 required RELEASE_NAMESPACE
 required RELEASE_OUTPUTS_PATH
 required RELEASE_SMOKE_MODE
@@ -202,7 +203,27 @@ esac
 mkdir -p "$RELEASE_WORK_DIR" "$TOOLS_PACK_CACHE_DIR" "$(dirname "$BUILD_JSON_PATH")" "$(dirname "$BUILD_LOG_PATH")"
 : > "$BUILD_LOG_PATH"
 release_timings_json=""
-release_channel="${RELEASE_CHANNEL:-beta}"
+release_channel="$RELEASE_CHANNEL"
+
+resolve_local_update_version() {
+  local channel="$1"
+  local version="$2"
+  if [ "$channel" = "stable" ]; then
+    if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+      printf '%s.%s.%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "$((BASH_REMATCH[3] + 1))"
+      return 0
+    fi
+    echo "full mac stable smoke requires stable version x.y.z; got $version" >&2
+    return 1
+  fi
+
+  if [[ "$version" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-${channel}\.([0-9]+)$ ]]; then
+    printf '%s-%s.%s' "${BASH_REMATCH[1]}" "$channel" "$((BASH_REMATCH[2] + 1))"
+    return 0
+  fi
+  echo "full mac payload smoke requires counted version x.y.z-$channel.N; got $version" >&2
+  return 1
+}
 
 case "$RELEASE_TARGET" in
   mac_arm64 | mac_x64)
@@ -306,37 +327,37 @@ else
   required RELEASE_REPORT_DIR
   update_build_json_path=""
   update_version=""
-  if [ "$RELEASE_SMOKE_MODE" = "full" ] && [ "$RELEASE_TARGET" = "mac_arm64" ] && [ -z "${OD_PACKAGED_E2E_MAC_UPDATE_METADATA_URL:-}" ]; then
-    if [[ "$RELEASE_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-${release_channel}\.([0-9]+)$ ]]; then
-      update_version="${BASH_REMATCH[1]}-${release_channel}.$((BASH_REMATCH[2] + 1))"
-      update_fixture_dir="$RELEASE_WORK_DIR/tools-pack-update-fixture"
-      update_build_json_path="$RELEASE_WORK_DIR/mac-tools-pack-update-build.json"
-      update_args=(
-        exec tools-pack mac build
-        --dir "$update_fixture_dir"
-        --cache-dir "$TOOLS_PACK_CACHE_DIR"
-        --namespace "$RELEASE_NAMESPACE"
-        --portable
-        --app-version "$update_version"
-        --mac-compression "${MAC_COMPRESSION:-normal}"
-        --to dmg
-        --json
-      )
-      build_mac_update_fixture() {
-        local update_output
-        update_output="$(pnpm "${update_args[@]}")"
-        printf '%s\n' "$update_output" > "$update_build_json_path"
-      }
-      measure_step "tools-pack mac build update fixture" build_mac_update_fixture
-    else
-      echo "full mac payload smoke requires counted version x.y.z-$release_channel.N; got $RELEASE_VERSION" >&2
+  if [ "$RELEASE_SMOKE_MODE" = "full" ] && [ -z "${OD_PACKAGED_E2E_MAC_UPDATE_METADATA_URL:-}" ]; then
+    if [ "$RELEASE_TARGET" != "mac_arm64" ]; then
+      echo "local tools-serve mac updater fixture is only supported for mac_arm64; provide OD_PACKAGED_E2E_MAC_UPDATE_METADATA_URL for $RELEASE_TARGET full smoke" >&2
       exit 1
     fi
+    update_version="$(resolve_local_update_version "$release_channel" "$RELEASE_VERSION")"
+    update_fixture_dir="$RELEASE_WORK_DIR/tools-pack-update-fixture"
+    update_build_json_path="$RELEASE_WORK_DIR/mac-tools-pack-update-build.json"
+    update_args=(
+      exec tools-pack mac build
+      --dir "$update_fixture_dir"
+      --cache-dir "$TOOLS_PACK_CACHE_DIR"
+      --namespace "$RELEASE_NAMESPACE"
+      --portable
+      --app-version "$update_version"
+      --mac-compression "${MAC_COMPRESSION:-normal}"
+      --to dmg
+      --json
+    )
+    build_mac_update_fixture() {
+      local update_output
+      update_output="$(pnpm "${update_args[@]}")"
+      printf '%s\n' "$update_output" > "$update_build_json_path"
+    }
+    measure_step "tools-pack mac build update fixture" build_mac_update_fixture
   fi
   OD_PACKAGED_E2E_BUILD_JSON_PATH="$BUILD_JSON_PATH" \
   OD_PACKAGED_E2E_BUILD_LOG_PATH="$BUILD_LOG_PATH" \
   OD_PACKAGED_E2E_MAC=1 \
   OD_PACKAGED_E2E_MAC_UPDATE_BUILD_JSON_PATH="$update_build_json_path" \
+  OD_PACKAGED_E2E_MAC_UPDATE_FIXTURE="${update_build_json_path:+tools-serve}" \
   OD_PACKAGED_E2E_MAC_UPDATE_METADATA_URL="${OD_PACKAGED_E2E_MAC_UPDATE_METADATA_URL:-}" \
   OD_PACKAGED_E2E_MAC_UPDATE_VERSION="${OD_PACKAGED_E2E_MAC_UPDATE_VERSION:-$update_version}" \
   OD_PACKAGED_E2E_MAC_SMOKE_PROFILE="$RELEASE_SMOKE_MODE" \

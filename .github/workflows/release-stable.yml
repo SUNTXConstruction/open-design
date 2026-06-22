@@ -20,6 +20,25 @@ on:
         required: false
         type: string
         default: ""
+      win_x64_smoke_mode:
+        description: "Windows x64 smoke coverage."
+        required: true
+        type: choice
+        options:
+          - skip
+          - core
+          - full
+        default: core
+      win_x64_update_metadata_url:
+        description: "Optional external updater metadata URL for full Windows x64 payload smoke."
+        required: false
+        type: string
+        default: ""
+      win_x64_update_target_version:
+        description: "Optional external updater target version expected by full Windows x64 payload smoke."
+        required: false
+        type: string
+        default: ""
   workflow_call:
     inputs:
       prerelease_version:
@@ -33,6 +52,21 @@ on:
         default: "metadata"
       ref:
         description: "Stable release branch to build. Empty builds the caller's ref, which must also be release/vX.Y.Z."
+        required: false
+        type: string
+        default: ""
+      win_x64_smoke_mode:
+        description: "Windows x64 smoke coverage: skip, core, or full."
+        required: false
+        type: string
+        default: "core"
+      win_x64_update_metadata_url:
+        description: "Optional external updater metadata URL for full Windows x64 payload smoke."
+        required: false
+        type: string
+        default: ""
+      win_x64_update_target_version:
+        description: "Optional external updater target version expected by full Windows x64 payload smoke."
         required: false
         type: string
         default: ""
@@ -748,7 +782,23 @@ jobs:
           }
           "deletedFailedCacheKey=$matchedKey count=$($caches.Count)"
 
+      - name: Build stable win_x64 update fixture
+        if: ${{ inputs.win_x64_smoke_mode == 'full' && inputs.win_x64_update_metadata_url == '' && inputs.win_x64_update_target_version == '' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $match = [regex]::Match("${{ needs.metadata.outputs.release_version }}", "^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$")
+          if (-not $match.Success) { throw "full Windows stable smoke requires stable version x.y.z; got ${{ needs.metadata.outputs.release_version }}" }
+          $updateVersion = "{0}.{1}.{2}" -f $match.Groups["major"].Value, $match.Groups["minor"].Value, ([int]$match.Groups["patch"].Value + 1)
+          $buildArgs = @("exec", "tools-pack", "win", "build", "--dir", "${{ runner.temp }}\release-work\win_x64\tools-pack-update-fixture", "--cache-dir", "${{ runner.temp }}\tools-pack-cache", "--namespace", "${{ needs.metadata.outputs.win_namespace }}", "--app-version", $updateVersion, "--to", "nsis", "--require-vela-cli", "--json")
+          $updateOutput = pnpm.cmd @buildArgs
+          if ($LASTEXITCODE -ne 0) { throw "tools-pack win update fixture failed with exit code $LASTEXITCODE" }
+          $updateOutput | Set-Content -Path "${{ runner.temp }}\windows-tools-pack-update-build.json" -Encoding utf8
+          $updateBuild = $updateOutput | ConvertFrom-Json
+          pnpm.cmd exec tools-pack win validate-payload --namespace "${{ needs.metadata.outputs.win_namespace }}" --payload-path $updateBuild.payloadPath --expected-version $updateVersion --json
+
       - name: Smoke release windows packaged runtime
+        if: ${{ inputs.win_x64_smoke_mode != 'skip' }}
         working-directory: e2e
         env:
           OD_PACKAGED_E2E_BUILD_JSON_PATH: ${{ runner.temp }}/windows-tools-pack-build.json
@@ -759,6 +809,10 @@ jobs:
           OD_PACKAGED_E2E_RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           OD_PACKAGED_E2E_REPORT_DIR: ${{ runner.temp }}/release-report/win
           OD_PACKAGED_E2E_TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
+          OD_PACKAGED_E2E_WIN_SMOKE_PROFILE: ${{ inputs.win_x64_smoke_mode }}
+          OD_PACKAGED_E2E_WIN_UPDATE_FIXTURE: ${{ inputs.win_x64_smoke_mode == 'full' && inputs.win_x64_update_metadata_url == '' && inputs.win_x64_update_target_version == '' && 'tools-serve' || '' }}
+          OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL: ${{ inputs.win_x64_update_metadata_url }}
+          OD_PACKAGED_E2E_WIN_UPDATE_VERSION: ${{ inputs.win_x64_update_target_version }}
         run: |
           $ErrorActionPreference = "Stop"
           pnpm exec tsx scripts/release-smoke.ts win specs/win.spec.ts
