@@ -118,7 +118,7 @@ Console. If Search Console shows `email not found`, use OAuth instead.
    - `GSC_OAUTH_REFRESH_TOKEN`
 3. Optional service-account fallback:
    - `GSC_SERVICE_ACCOUNT_KEY`
-4. Confirm the existing `BOT_APP_ID` and `BOT_APP_PRIVATE_KEY` secrets
+4. Confirm the existing `BOT_APP_CLIENT_ID` and `BOT_APP_PRIVATE_KEY` secrets
    already exist. The bot needs `contents:write`,
    `pull-requests:write`, and `issues:write` for
    `nexu-io/open-design`.
