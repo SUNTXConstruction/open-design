@@ -574,6 +574,9 @@ describe("desktop updater", () => {
       expect(checked.state).toBe(DESKTOP_UPDATE_STATES.DOWNLOADED);
       expect(checked.artifact?.type).toBe("payload");
       expect(checked.artifact?.name).toBe("open-design-1.0.0-beta.2-win-x64-payload.7z");
+      expect(checked.capabilities.canApplyInPlace).toBe(true);
+      expect(checked.capabilities.canOpenInstaller).toBe(false);
+      expect(checked.capabilities.requiresManualInstall).toBe(false);
       expect(await readFile(checked.downloadPath ?? "", "utf8")).toBe("open design windows payload fixture");
       expect(extractCount).toBe(1);
       expect(await readFile(join(root, "launcher", "channels", "beta", "namespaces", "release-beta-win", "versions", "1.0.0-beta.2", "manifest.json"), "utf8")).toContain("1.0.0-beta.2");
@@ -924,6 +927,9 @@ describe("desktop updater", () => {
 
       const checked = await updater.checkForUpdates();
       expect(checked.artifact?.type).toBe("payload");
+      expect(checked.capabilities.canApplyInPlace).toBe(true);
+      expect(checked.capabilities.canOpenInstaller).toBe(false);
+      expect(checked.capabilities.requiresManualInstall).toBe(false);
 
       const installed = await updater.installUpdate();
 
@@ -1021,6 +1027,9 @@ describe("desktop updater", () => {
 
       const checked = await updater.checkForUpdates();
       expect(checked.artifact?.type).toBe("payload");
+      expect(checked.capabilities.canApplyInPlace).toBe(true);
+      expect(checked.capabilities.canOpenInstaller).toBe(false);
+      expect(checked.capabilities.requiresManualInstall).toBe(false);
 
       const installed = await updater.installUpdate();
 
