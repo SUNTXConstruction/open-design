@@ -738,6 +738,64 @@ describe('ProjectView conversation run isolation', () => {
     expect(createConversation).toHaveBeenCalledWith('project-1', undefined, undefined);
   });
 
+  it('does not seed a fresh conversation from an API-mode stream in progress', async () => {
+    conversationAMessages = [
+      {
+        id: 'user-a',
+        role: 'user',
+        content: 'Keep the editorial grid and muted palette.',
+        createdAt: 1,
+      },
+      {
+        id: 'assistant-seeded',
+        role: 'assistant',
+        content: 'Last completed assistant output',
+        createdAt: 2,
+        runStatus: 'succeeded',
+        endedAt: 3,
+      },
+    ];
+    let byokHandlers:
+      | { onDelta: (delta: string) => void; onDone: () => void }
+      | null = null;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    streamMessage.mockImplementation(
+      async (
+        _config: unknown,
+        _systemPrompt: unknown,
+        _history: unknown,
+        _signal: unknown,
+        handlers: { onDelta: (delta: string) => void; onDone: () => void },
+      ) => {
+        byokHandlers = handlers;
+      },
+    );
+
+    renderProjectView({
+      ...config,
+      mode: 'api',
+      apiKey: 'test-key',
+      model: 'api-model',
+    });
+
+    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
+    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
+
+    fireEvent.click(screen.getByTestId('send-message'));
+
+    await waitFor(() => expect(streamMessage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('streaming-state').textContent).toBe('streaming'));
+    if (!byokHandlers) throw new Error('Expected API-mode stream handlers');
+    byokHandlers.onDelta('Partial assistant output');
+
+    fireEvent.click(screen.getByTestId('new-conversation'));
+
+    await waitFor(() => expect(createConversation).toHaveBeenCalledTimes(1));
+    expect(createConversation).toHaveBeenCalledWith('project-1', undefined, undefined);
+
+    byokHandlers.onDone();
+  });
+
   it('trims a trailing resumable failed turn from new-conversation seeds', async () => {
     const successfulUser: ChatMessage = {
       id: 'user-success',

@@ -5198,6 +5198,7 @@ export function ProjectView({
         typeof activeConversationId === 'string'
         && activeConversationId
         && messagesConversationIdRef.current === activeConversationId
+        && !currentConversationStreaming
         && !currentConversationHasActiveRun
         && seedMessages.length > 0
           ? activeConversationId
