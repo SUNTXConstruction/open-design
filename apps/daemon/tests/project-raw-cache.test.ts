@@ -36,6 +36,16 @@ describe('GET /api/projects/:id/raw/* cache revalidation', () => {
     await writeFile(path.join(dir, 'styles.css'), Buffer.from('body{color:#123456}'));
     await writeFile(path.join(dir, 'logo.png'), Buffer.alloc(256, 0x7f));
     await writeFile(path.join(dir, 'clip.mp4'), Buffer.alloc(512, 0x42));
+    // A Vite dev entry whose /raw/ response is substituted with dist/index.html.
+    await writeFile(
+      path.join(dir, 'vite-entry.html'),
+      Buffer.from('<!doctype html><html><head><script type="module" src="/src/main.tsx"></script></head><body></body></html>'),
+    );
+    await mkdir(path.join(dir, 'dist', 'assets'), { recursive: true });
+    await writeFile(
+      path.join(dir, 'dist', 'index.html'),
+      Buffer.from('<!doctype html><html><head><script type="module" crossorigin src="/assets/app.js"></script></head><body>v1</body></html>'),
+    );
   });
 
   afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
@@ -107,6 +117,31 @@ describe('GET /api/projects/:id/raw/* cache revalidation', () => {
     });
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('#222');
+  });
+
+  it('busts the cache when transform-substituted content changes (dist rewrite => 200)', async () => {
+    // /raw/vite-entry.html is served as dist/index.html (Vite substitution). The
+    // validator must reflect the SENT bytes, not the unchanged source entry — so
+    // rewriting only dist/index.html must return 200, not a stale 304.
+    const dir = path.join(projectsRoot, projectId);
+    const first = await fetch(rawUrl('vite-entry.html'));
+    expect(first.status).toBe(200);
+    expect(await first.text()).toContain('v1'); // substituted dist content
+    const etag = first.headers.get('etag')!;
+    expect(etag).toBeTruthy();
+
+    // Same ETag is returned for unchanged content.
+    const unchanged = await fetch(rawUrl('vite-entry.html'), { headers: { 'If-None-Match': etag } });
+    expect(unchanged.status).toBe(304);
+
+    // Rewrite ONLY the substituted dist file; the source vite-entry.html is untouched.
+    await writeFile(
+      path.join(dir, 'dist', 'index.html'),
+      Buffer.from('<!doctype html><html><head><script type="module" crossorigin src="/assets/app.js"></script></head><body>v2</body></html>'),
+    );
+    const after = await fetch(rawUrl('vite-entry.html'), { headers: { 'If-None-Match': etag } });
+    expect(after.status).toBe(200);
+    expect(await after.text()).toContain('v2');
   });
 
   it('revalidates the streamed media path too (304 on matching ETag)', async () => {

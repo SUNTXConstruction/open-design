@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { Express, Response } from 'express';
@@ -1999,14 +2000,24 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     );
     beforeSend?.(meta.mime);
 
-    if (revalidate) {
+    const isStreamed = meta.mime.startsWith('video/') || meta.mime.startsWith('audio/');
+    // A transform (the Vite dev-entry -> dist/index.html substitution, or preview
+    // bridge injection) can replace the response bytes — but only for HTML. For
+    // HTML the source file's mtime/size is NOT a valid validator, so its ETag is
+    // computed from the actual sent bytes after the transform. Everything else
+    // (assets, fonts, images, streamed media — where the transform is a no-op)
+    // keeps the fast mtime ETag with an early 304.
+    const willSubstitute =
+      !isStreamed && !!transformFile && /^text\/html(?:;|$)/i.test(meta.mime);
+
+    if (revalidate && !willSubstitute) {
       const etag = setRawRevalidationHeaders(res, meta);
       if (rawRequestIsFresh(req, etag, meta.mtime)) {
         return res.status(304).end();
       }
     }
 
-    if (meta.mime.startsWith('video/') || meta.mime.startsWith('audio/')) {
+    if (isStreamed) {
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Content-Type', meta.mime);
 
@@ -2051,7 +2062,23 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     }
 
     const file = await readProjectFile(PROJECTS_DIR, projectId, relPath, metadata);
-    res.type(file.mime).send(transformFile ? await transformFile(file) : file.buffer);
+    const body = transformFile ? await transformFile(file) : file.buffer;
+    if (revalidate && willSubstitute) {
+      // Validator from the ACTUAL response bytes, so a change to the substituted
+      // content (e.g. dist/index.html) busts the cache even when the source
+      // file's mtime is unchanged.
+      const buf = Buffer.isBuffer(body) ? body : Buffer.from(String(body));
+      const etag = `W/"${createHash('sha1').update(buf).digest('hex').slice(0, 16)}"`;
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Last-Modified', new Date(Math.floor(meta.mtime)).toUTCString());
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (typeof ifNoneMatch === 'string' && ifNoneMatch.split(',').some((tag) => tag.trim() === etag)) {
+        return res.status(304).end();
+      }
+      return res.type(file.mime).send(buf);
+    }
+    res.type(file.mime).send(body);
   }
 
   function previewFilePathForProject(project: any, queryFile: unknown): string {

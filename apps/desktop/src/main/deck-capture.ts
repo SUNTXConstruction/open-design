@@ -51,15 +51,17 @@ const SLIDE_MAX_PX = 8192;
 const HIDE_CHROME_SELECTOR =
   ".progress-bar, .notes-overlay, .overview, .notes, aside.notes, .speaker-notes, .deck-nav, .deck-hint, .deck-counter";
 
-// All `.slide` elements anywhere in the document — decks nest them differently
-// (`.deck > .slide`, `.deck-viewport > .deck-stage > .slide`, etc.). Presenter-
+// The slide-surface family, matching the print/export path in pdf-export.ts
+// (`.slide, [data-screen-label], .deck-slide, .ppt-slide`) — decks ship under
+// several conventions, not just `.slide` (e.g. zhangzara-creative-mode uses
+// `<section data-screen-label=...>`). Decks also nest them differently
+// (`.deck > .slide`, `.deck-viewport > .deck-stage > .slide`, etc.); presenter-
 // mode clones (`.mini-slide .slide`, `.overview .slide`) are filtered out in the
-// page (see realSlidesExpr) rather than via a rigid direct-child selector, which
-// missed nested decks.
-const SLIDE_SELECTOR = ".slide";
+// page rather than via a rigid direct-child selector, which missed nested decks.
+const SLIDE_SELECTOR = ".slide, [data-screen-label], .deck-slide, .ppt-slide";
 // JS expression (used inside executeJavaScript) returning the real slides.
 const REAL_SLIDES_JS =
-  "Array.prototype.slice.call(document.querySelectorAll('.slide')).filter(function(el){return !el.closest('.mini-slide, .overview, .notes-overlay, .thumb')})";
+  "Array.prototype.slice.call(document.querySelectorAll('.slide, [data-screen-label], .deck-slide, .ppt-slide')).filter(function(el){return !el.closest('.mini-slide, .overview, .notes-overlay, .thumb')})";
 
 /**
  * Renders an HTML deck to one PNG per slide using a hidden Electron window.
@@ -137,6 +139,12 @@ export async function renderDeckSlides(
     // without being a deck, so we must NOT treat any `.slide` as proof of a deck.
     // `deck:false` forces full-page capture; otherwise require actual slides.
     const hasSlides = Number.isInteger(count) && count >= 1;
+    // The caller explicitly asked for a deck but no slide surfaces were found —
+    // fail fast with a clear error instead of silently downgrading to a single
+    // full-page capture (which would be the wrong export for PPTX/deck).
+    if (input.deck === true && !hasSlides) {
+      return finish({ ok: false, error: "no slide surfaces found in this deck" });
+    }
     const wantsDeck = hasSlides && input.deck !== false;
     if (!wantsDeck) {
       return finish(await capturePage(window, input.pageImageFormat === "jpeg", input.outputDir));
