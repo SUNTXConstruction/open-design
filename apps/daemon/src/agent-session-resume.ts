@@ -5,41 +5,114 @@ import type Database from 'better-sqlite3';
 import {
   clearAgentSession,
   getAgentSessionRecord,
+  latestCompletedAssistantMessageId,
   upsertAgentSession,
 } from './db.js';
 
 type SqliteDb = Database.Database;
+
+/**
+ * Why a stored session was NOT resumed this turn. `null` means it WAS resumed
+ * (or there was no stored session to begin with). Surfaced for tests and
+ * analytics; the daemon reseeds the full transcript for every non-null reason.
+ */
+export type ResumeInvalidationReason =
+  | 'model_changed'
+  | 'cwd_changed'
+  | 'conversation_advanced'
+  | 'missing_cursor';
 
 export interface AgentResumeContext {
   /** Stored CLI session id to resume, or null when starting fresh. */
   resumeSessionId: string | null;
   /** Freshly minted UUID to open a new session with when not resuming. */
   newSessionId: string;
-  /** True when a prior session id exists for this (conversation, agent). */
+  /** True when a prior session id exists AND it is still safe to resume. */
   isResuming: boolean;
   /** Hash of the stable instruction block last sent on this session, or null. */
   storedStablePromptHash: string | null;
+  /** Set when a stored session existed but was rejected; see the type. */
+  invalidationReason: ResumeInvalidationReason | null;
 }
 
 export type CapturedAgentSessionResult = 'stored' | 'cleared' | 'skipped';
 
 /**
+ * Resume identity guard. A stored upstream session is only safe to continue
+ * (and to `skipTranscript` for) when the conversation has not changed shape
+ * under it. We reject the resume — forcing a fresh session reseeded with the
+ * full transcript — when:
+ *  - the model changed (the session was built under a different model),
+ *  - the cwd changed (different workspace identity), or
+ *  - the conversation advanced under the session: the assistant message the
+ *    session last produced is no longer the latest completed assistant turn
+ *    (another agent ran in between, or the message was edited/removed).
+ *
+ * The cursor is the session's own last assistant message id. At the next turn's
+ * resolve time the latest completed assistant message — excluding the current
+ * run's in-flight placeholder — must still be that id. A null stored cursor (row
+ * written before this guard shipped) cannot be verified, so it is treated as
+ * unsafe and reseeded once.
+ */
+export function evaluateResumeInvalidation(input: {
+  storedModel: string | null;
+  storedCwd: string | null;
+  storedLastMessageId: string | null;
+  currentModel: string | null;
+  currentCwd: string | null;
+  latestCompletedAssistantId: string | null;
+}): ResumeInvalidationReason | null {
+  if ((input.storedModel ?? null) !== (input.currentModel ?? null)) return 'model_changed';
+  if ((input.storedCwd ?? null) !== (input.currentCwd ?? null)) return 'cwd_changed';
+  if (input.storedLastMessageId == null) return 'missing_cursor';
+  if (input.latestCompletedAssistantId !== input.storedLastMessageId) {
+    return 'conversation_advanced';
+  }
+  return null;
+}
+
+/**
  * Decide whether a resume-capable adapter should continue its stored CLI
  * session or start a new one for this (conversation, agent). Pure read +
- * mint; the caller is responsible for persisting `newSessionId` when it
- * actually spawns a create turn.
+ * mint; the caller is responsible for persisting `newSessionId` (and the
+ * current model/cwd/cursor) when it actually spawns a create turn.
  */
 export function resolveAgentResumeContext(
   db: SqliteDb,
-  input: { conversationId: string; agentId: string },
+  input: {
+    conversationId: string;
+    agentId: string;
+    currentModel?: string | null;
+    currentCwd?: string | null;
+    /** The current run's in-flight assistant placeholder id, excluded from the
+     *  "latest completed assistant" cursor lookup. */
+    currentAssistantMessageId?: string | null;
+  },
 ): AgentResumeContext {
   const record = getAgentSessionRecord(db, input.conversationId, input.agentId);
-  const resumeSessionId = record?.sessionId ?? null;
+  const storedSessionId = record?.sessionId ?? null;
+  const invalidationReason =
+    storedSessionId != null
+      ? evaluateResumeInvalidation({
+          storedModel: record?.model ?? null,
+          storedCwd: record?.cwd ?? null,
+          storedLastMessageId: record?.lastMessageId ?? null,
+          currentModel: input.currentModel ?? null,
+          currentCwd: input.currentCwd ?? null,
+          latestCompletedAssistantId: latestCompletedAssistantMessageId(
+            db,
+            input.conversationId,
+            input.currentAssistantMessageId ?? '',
+          ),
+        })
+      : null;
+  const resumable = storedSessionId != null && invalidationReason == null;
   return {
-    resumeSessionId,
+    resumeSessionId: resumable ? storedSessionId : null,
     newSessionId: randomUUID(),
-    isResuming: resumeSessionId != null,
-    storedStablePromptHash: record?.stablePromptHash ?? null,
+    isResuming: resumable,
+    storedStablePromptHash: resumable ? (record?.stablePromptHash ?? null) : null,
+    invalidationReason,
   };
 }
 

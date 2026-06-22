@@ -10,6 +10,7 @@ import {
   insertProject,
   openDatabase,
   upsertAgentSession,
+  upsertMessage,
 } from '../src/db.js';
 import {
   computeIncludeStable,
@@ -45,34 +46,120 @@ describe('resolveAgentResumeContext', () => {
     return db;
   }
 
+  function seedMessage(db: ReturnType<typeof seed>, id: string, role: 'user' | 'assistant') {
+    upsertMessage(db, 'conv-1', { id, role, content: `${role} ${id}` });
+  }
+
+  // A session row whose identity (model/cwd/last assistant id) matches what the
+  // next resolve will present, so the guard allows the resume.
+  function storeInSyncSession(
+    db: ReturnType<typeof seed>,
+    over: { stablePromptHash?: string | null; model?: string | null; cwd?: string | null } = {},
+  ) {
+    upsertAgentSession(db, {
+      conversationId: 'conv-1',
+      agentId: 'claude',
+      sessionId: 'sess-A',
+      lastMessageId: 'asst-1',
+      model: over.model ?? null,
+      cwd: over.cwd ?? null,
+      stablePromptHash: over.stablePromptHash ?? null,
+    });
+  }
+
   it('creates a new session (minted uuid, not resuming) when none stored', () => {
     const db = seed();
     const ctx = resolveAgentResumeContext(db, { conversationId: 'conv-1', agentId: 'claude' });
     expect(ctx.isResuming).toBe(false);
     expect(ctx.resumeSessionId).toBeNull();
     expect(ctx.newSessionId).toMatch(UUID_RE);
+    expect(ctx.invalidationReason).toBeNull();
   });
 
-  it('resumes the stored session when one exists', () => {
+  it('resumes the stored session when the identity still matches', () => {
     const db = seed();
-    upsertAgentSession(db, { conversationId: 'conv-1', agentId: 'claude', sessionId: 'sess-A' });
+    seedMessage(db, 'asst-1', 'assistant');
+    storeInSyncSession(db);
     const ctx = resolveAgentResumeContext(db, { conversationId: 'conv-1', agentId: 'claude' });
+    expect(ctx.isResuming).toBe(true);
+    expect(ctx.resumeSessionId).toBe('sess-A');
+    expect(ctx.invalidationReason).toBeNull();
+  });
+
+  it('still resumes when only the current run placeholder is newer (normal follow-up)', () => {
+    const db = seed();
+    seedMessage(db, 'asst-1', 'assistant');
+    storeInSyncSession(db);
+    // The next turn's user message + assistant placeholder are already inserted.
+    seedMessage(db, 'user-2', 'user');
+    seedMessage(db, 'asst-2', 'assistant');
+    const ctx = resolveAgentResumeContext(db, {
+      conversationId: 'conv-1',
+      agentId: 'claude',
+      currentAssistantMessageId: 'asst-2',
+    });
     expect(ctx.isResuming).toBe(true);
     expect(ctx.resumeSessionId).toBe('sess-A');
   });
 
-  it('returns null storedStablePromptHash when none stored, and the value when present', () => {
+  it('returns the stored stable hash when resuming', () => {
     const db = seed();
-    const fresh = resolveAgentResumeContext(db, { conversationId: 'conv-1', agentId: 'claude' });
-    expect(fresh.storedStablePromptHash).toBeNull();
-
-    upsertAgentSession(db, {
-      conversationId: 'conv-1', agentId: 'claude', sessionId: 'sess-A', stablePromptHash: 'h-1',
-    });
+    seedMessage(db, 'asst-1', 'assistant');
+    storeInSyncSession(db, { stablePromptHash: 'h-1' });
     const resumed = resolveAgentResumeContext(db, { conversationId: 'conv-1', agentId: 'claude' });
     expect(resumed.isResuming).toBe(true);
-    expect(resumed.resumeSessionId).toBe('sess-A');
     expect(resumed.storedStablePromptHash).toBe('h-1');
+  });
+
+  it('reseeds (model_changed) when the model differs from the stored session', () => {
+    const db = seed();
+    seedMessage(db, 'asst-1', 'assistant');
+    storeInSyncSession(db, { model: 'gpt-5.1' });
+    const ctx = resolveAgentResumeContext(db, {
+      conversationId: 'conv-1', agentId: 'claude', currentModel: 'gpt-5-codex',
+    });
+    expect(ctx.isResuming).toBe(false);
+    expect(ctx.resumeSessionId).toBeNull();
+    expect(ctx.invalidationReason).toBe('model_changed');
+  });
+
+  it('reseeds (cwd_changed) when the cwd differs from the stored session', () => {
+    const db = seed();
+    seedMessage(db, 'asst-1', 'assistant');
+    storeInSyncSession(db, { cwd: '/work/a' });
+    const ctx = resolveAgentResumeContext(db, {
+      conversationId: 'conv-1', agentId: 'claude', currentCwd: '/work/b',
+    });
+    expect(ctx.isResuming).toBe(false);
+    expect(ctx.invalidationReason).toBe('cwd_changed');
+  });
+
+  it('reseeds (conversation_advanced) when another agent completed a turn in between', () => {
+    const db = seed();
+    seedMessage(db, 'asst-1', 'assistant');
+    storeInSyncSession(db);
+    // A different agent ran: a newer completed assistant turn now exists.
+    seedMessage(db, 'user-2', 'user');
+    seedMessage(db, 'asst-other', 'assistant');
+    // This agent comes back; its placeholder is asst-3.
+    seedMessage(db, 'user-3', 'user');
+    seedMessage(db, 'asst-3', 'assistant');
+    const ctx = resolveAgentResumeContext(db, {
+      conversationId: 'conv-1', agentId: 'claude', currentAssistantMessageId: 'asst-3',
+    });
+    expect(ctx.isResuming).toBe(false);
+    expect(ctx.resumeSessionId).toBeNull();
+    expect(ctx.invalidationReason).toBe('conversation_advanced');
+  });
+
+  it('reseeds (missing_cursor) for a legacy row written without an identity', () => {
+    const db = seed();
+    seedMessage(db, 'asst-1', 'assistant');
+    // Old-style upsert: no model/cwd/lastMessageId.
+    upsertAgentSession(db, { conversationId: 'conv-1', agentId: 'claude', sessionId: 'sess-A' });
+    const ctx = resolveAgentResumeContext(db, { conversationId: 'conv-1', agentId: 'claude' });
+    expect(ctx.isResuming).toBe(false);
+    expect(ctx.invalidationReason).toBe('missing_cursor');
   });
 });
 
@@ -121,7 +208,7 @@ describe('persistCapturedAgentSession', () => {
       stablePromptHash: 'hash-1',
     });
     expect(result).toBe('stored');
-    expect(getAgentSessionRecord(db, 'conv-1', 'pi')).toEqual({
+    expect(getAgentSessionRecord(db, 'conv-1', 'pi')).toMatchObject({
       sessionId: '/tmp/current.jsonl',
       stablePromptHash: 'hash-1',
     });

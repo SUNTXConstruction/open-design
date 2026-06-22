@@ -148,7 +148,69 @@ describe('codex native session resume', () => {
     expect(deadResume.argv.slice(0, 2)).toEqual(['exec', 'resume']);
     expect(fresh.argv).not.toContain('resume');
   });
+
+  it('reseeds (no resume) when another agent ran in the conversation between codex turns', async () => {
+    binDir = await mkdtemp(path.join(os.tmpdir(), 'od-codex-intervene-bin-'));
+    const { bin, logPath } = await writeCapturingCodex(binDir, 'codex-intervene');
+    const claudeBin = await writeMinimalClaude(binDir, 'claude-intervene');
+
+    clearTelemetryEnv();
+    started = (await startServer({ port: 0, returnServer: true })) as StartedServer;
+    await putConfig(started.url, {
+      agentId: 'codex',
+      agentCliEnv: { codex: { CODEX_BIN: bin }, claude: { CLAUDE_BIN: claudeBin } },
+      telemetry: { metrics: true, content: false, artifactManifest: false },
+      privacyDecisionAt: Date.now(),
+    });
+
+    const conversationId = await createConversation(started.url);
+
+    // Turn 1: codex creates + persists its session.
+    expect((await sendRunAndWait(started.url, conversationId, 'codex first', 'codex')).status)
+      .toBe('succeeded');
+    // Turn 2: a DIFFERENT agent runs, adding a completed assistant turn that the
+    // codex session never saw.
+    expect((await sendRunAndWait(started.url, conversationId, 'now claude', 'claude')).status)
+      .toBe('succeeded');
+    // Turn 3: codex returns. Its stored session is behind, so the daemon must
+    // start a fresh `exec` (and reseed the full transcript) — NOT resume the
+    // stale session and silently drop the intervening claude turn.
+    expect((await sendRunAndWait(started.url, conversationId, 'codex again', 'codex')).status)
+      .toBe('succeeded');
+
+    const runs = await readChatTurnExecs(logPath, conversationId);
+    expect(runs).toHaveLength(2); // only the two codex turns hit the codex bin
+    const [create, afterIntervening] = runs as [ExecInvocation, ExecInvocation];
+    expect(create.argv).not.toContain('resume');
+    // The headline guard (issue raised by @nettee): after a different agent
+    // completed a turn the codex session never saw, codex must NOT resume that
+    // stale session — it starts a fresh `exec` so the run is reseeded with the
+    // full transcript instead of silently dropping the intervening turn.
+    expect(afterIntervening.argv).not.toContain('resume');
+    expect(afterIntervening.argv[0]).toBe('exec');
+  });
 });
+
+// Minimal fake Claude CLI (claude-stream-json): emits an init frame + one
+// assistant text reply and exits 0. Used only to inject an intervening
+// completed turn from a different agent.
+async function writeMinimalClaude(dir: string, name: string): Promise<string> {
+  const bin = path.join(dir, name);
+  await writeFile(
+    bin,
+    `#!/usr/bin/env node
+const argv = process.argv.slice(2);
+if (argv.includes('--version')) { console.log('claude-code 1.0.0-intervene'); process.exit(0); }
+if (argv.includes('--help')) { console.log('Usage: claude -p'); process.exit(0); }
+console.log(JSON.stringify({ type: 'system', subtype: 'init', model: 'claude-intervene' }));
+console.log(JSON.stringify({ type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: 'CLAUDE_INTERVENING_REPLY' }], stop_reason: 'end_turn' } }));
+setTimeout(() => process.exit(0), 10);
+`,
+    'utf8',
+  );
+  await chmod(bin, 0o755);
+  return bin;
+}
 
 // Fake codex CLI: mints a FIXED thread id on a create turn and echoes it on a
 // resume turn. Logs `{argv, stdin}` per invocation so the test can assert the
@@ -301,6 +363,7 @@ async function sendRunAndWait(
   url: string,
   encoded: string,
   message: string,
+  agentId = 'codex',
 ): Promise<RunStatus> {
   const [projectId, conversationId] = encoded.split('::');
   const assistantMessageId = `assistant_codex_${randomUUID()}`;
@@ -317,7 +380,7 @@ async function sendRunAndWait(
       conversationId,
       assistantMessageId,
       clientRequestId: `client_codex_${randomUUID()}`,
-      agentId: 'codex',
+      agentId,
       message,
       currentPrompt: message,
     }),

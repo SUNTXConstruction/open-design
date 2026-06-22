@@ -479,7 +479,6 @@ import {
   updateRoutine,
   updateRoutineRun,
   clearAgentSession,
-  updateAgentSessionStableHash,
   upsertAgentSession,
   upsertDeployment,
   upsertMessage,
@@ -5534,8 +5533,11 @@ export async function startServer({
         ? resolveAgentResumeContext(db, {
             conversationId: run.conversationId,
             agentId: def.id,
+            currentModel: run.model ?? null,
+            currentCwd: effectiveCwd,
+            currentAssistantMessageId: run.assistantMessageId ?? null,
           })
-        : { resumeSessionId: null as string | null, newSessionId: undefined as string | undefined, isResuming: false, storedStablePromptHash: null as string | null };
+        : { resumeSessionId: null as string | null, newSessionId: undefined as string | undefined, isResuming: false, storedStablePromptHash: null as string | null, invalidationReason: null };
     const userRequestPrompt = composeChatUserRequestForAgent(
       message,
       currentPrompt,
@@ -6014,6 +6016,9 @@ export async function startServer({
           agentId: def.id,
           sessionId: liveSessionId,
           stablePromptHash: currentStableHash,
+          model: run.model ?? null,
+          cwd: effectiveCwd,
+          lastMessageId: run.assistantMessageId ?? null,
         });
       }
       finalizeRetryTelemetry(status, decision, failure, errorCode);
@@ -6498,11 +6503,27 @@ export async function startServer({
             agentId: def.id,
             sessionId: createTurnSessionId,
             stablePromptHash: currentStableHash,
+            model: run.model ?? null,
+            cwd: effectiveCwd,
+            lastMessageId: run.assistantMessageId ?? null,
           });
           return;
         }
-        if (agentResumeCtx.isResuming && includeStableInstructions) {
-          updateAgentSessionStableHash(db, run.conversationId, def.id, currentStableHash);
+        if (agentResumeCtx.isResuming && agentResumeCtx.resumeSessionId) {
+          // Advance the resume identity guard after a successful resume turn:
+          // the conversation grew by this turn, so the cursor must move to the
+          // new max position (otherwise the next turn sees `cursor + 4` and
+          // falsely reseeds). model/cwd are unchanged (they matched on resume);
+          // refresh the stable hash to what the session now holds.
+          upsertAgentSession(db, {
+            conversationId: run.conversationId,
+            agentId: def.id,
+            sessionId: agentResumeCtx.resumeSessionId,
+            stablePromptHash: currentStableHash,
+            model: run.model ?? null,
+            cwd: effectiveCwd,
+            lastMessageId: run.assistantMessageId ?? null,
+          });
         }
       };
     }

@@ -95,7 +95,7 @@ describe('agent_sessions stable_prompt_hash', () => {
     upsertAgentSession(db, {
       conversationId: 'conv-1', agentId: 'claude', sessionId: 'sess-A', stablePromptHash: 'hash-1',
     });
-    expect(getAgentSessionRecord(db, 'conv-1', 'claude')).toEqual({
+    expect(getAgentSessionRecord(db, 'conv-1', 'claude')).toMatchObject({
       sessionId: 'sess-A', stablePromptHash: 'hash-1',
     });
   });
@@ -103,7 +103,7 @@ describe('agent_sessions stable_prompt_hash', () => {
   it('stores null stable hash when omitted', () => {
     const db = seed();
     upsertAgentSession(db, { conversationId: 'conv-1', agentId: 'claude', sessionId: 'sess-A' });
-    expect(getAgentSessionRecord(db, 'conv-1', 'claude')).toEqual({
+    expect(getAgentSessionRecord(db, 'conv-1', 'claude')).toMatchObject({
       sessionId: 'sess-A', stablePromptHash: null,
     });
   });
@@ -114,7 +114,7 @@ describe('agent_sessions stable_prompt_hash', () => {
       conversationId: 'conv-1', agentId: 'claude', sessionId: 'sess-A', stablePromptHash: 'hash-1',
     });
     updateAgentSessionStableHash(db, 'conv-1', 'claude', 'hash-2');
-    expect(getAgentSessionRecord(db, 'conv-1', 'claude')).toEqual({
+    expect(getAgentSessionRecord(db, 'conv-1', 'claude')).toMatchObject({
       sessionId: 'sess-A', stablePromptHash: 'hash-2',
     });
   });
