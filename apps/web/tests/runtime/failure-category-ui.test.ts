@@ -55,6 +55,17 @@ describe('enrichFailureUiWithCategory', () => {
     const base = generic();
     expect(enrichFailureUiWithCategory(base, null, null)).toEqual(base);
   });
+
+  it('does not clobber a tailored base message with the generic unknown reason', () => {
+    // A connection drop carries a specific messageKey AND classifies as
+    // `unknown`; the generic reason must NOT overwrite the connection copy.
+    const base = resolveRunFailureUi('AGENT_CONNECTION_DROPPED', 'claude');
+    expect(base.messageKey).toBe('chat.connectionDropped');
+    const ui = enrichFailureUiWithCategory(base, 'unknown', 'retry');
+    expect(ui.messageKey).toBe('chat.connectionDropped');
+    expect(ui.reasonKey ?? null).toBeNull();
+    expect(ui.titleKey).toBe('chat.runError.title.connectionDropped');
+  });
 });
 
 describe('error status event classification round-trip', () => {

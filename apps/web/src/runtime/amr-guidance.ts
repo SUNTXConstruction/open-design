@@ -337,15 +337,21 @@ export function enrichFailureUiWithCategory(
   if (!category) return base;
   const copy = CATEGORY_COPY[category];
   if (!copy) return base;
+  // Never clobber a tailored base message. When the errorCode path already
+  // produced specific copy (e.g. AGENT_CONNECTION_DROPPED → chat.connectionDropped,
+  // sign-in messages), the category here is usually a coarse `unknown` whose
+  // generic reason would overwrite the better message. Keep the base copy in
+  // that case and only contribute the switch-model affordance.
+  const baseHasSpecificCopy = base.messageKey != null;
   return {
     ...base,
     titleKey:
       copy.titleKey && base.titleKey === 'chat.runError.title.generic'
         ? copy.titleKey
         : base.titleKey,
-    reasonKey: copy.reasonKey ?? null,
-    expectationKey: copy.expectationKey ?? null,
-    retryHintKey: copy.retryHintKey ?? null,
+    reasonKey: baseHasSpecificCopy ? (base.reasonKey ?? null) : (copy.reasonKey ?? null),
+    expectationKey: baseHasSpecificCopy ? (base.expectationKey ?? null) : (copy.expectationKey ?? null),
+    retryHintKey: baseHasSpecificCopy ? (base.retryHintKey ?? null) : (copy.retryHintKey ?? null),
     offerSwitchModel: SWITCH_MODEL_CATEGORIES.has(category),
   };
 }
