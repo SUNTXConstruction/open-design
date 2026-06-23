@@ -59,7 +59,10 @@ import {
 } from '../run-artifact-fs.js';
 import type { RunEventForDiagnostics } from '../run-diagnostics.js';
 import { summarizeRunDiagnosticsForAnalytics } from '../run-diagnostics.js';
-import type { RunEventForFailureClassification } from '../run-failure-classification.js';
+import type {
+  RunEventForFailureClassification,
+  RunFailureClassification,
+} from '../run-failure-classification.js';
 import { classifyRunFailure } from '../run-failure-classification.js';
 import { deriveRunErrorCode, runResultFromStatus } from '../run-result.js';
 import type { RunStatusForAnalytics } from '../run-result.js';
@@ -128,6 +131,13 @@ interface ChatRun {
   signal?: string | null;
   error?: string | null;
   errorCode?: string | null;
+  /** Full failure classification computed once at terminal by the run
+   *  service (runtimes/runs.ts finish()); reused by run_finished analytics. */
+  failureClassification?: RunFailureClassification | null;
+  /** Outward-facing failure category mirrored onto the run status body. */
+  failureCategory?: RunFailureClassification['failure_category'] | null;
+  /** Outward-facing recommended user action mirrored onto the status body. */
+  userAction?: RunFailureClassification['user_action'] | null;
   projectMetadata?: ProjectMetadata;
   appliedPluginSnapshotId?: string | null;
   pluginId?: string | null;
@@ -883,7 +893,11 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
         );
         const result = runResultFromStatus(status.status);
         const errorCode = deriveRunErrorCode(status);
-        const failure = classifyRunFailure({
+        // Reuse the classification computed once at terminal by the run
+        // service (runtimes/runs.ts finish()) so the run_finished telemetry
+        // and the outward run status never disagree. Fall back to classifying
+        // here only if it is somehow absent (defensive).
+        const failure = run.failureClassification ?? classifyRunFailure({
           result,
           status,
           ...(errorCode ? { errorCode } : {}),

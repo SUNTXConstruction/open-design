@@ -14,6 +14,10 @@ import type { MediaExecutionPolicy } from './media.js';
 import type { AppliedPluginSnapshot } from '../plugins/apply.js';
 import type { McpAuthMode, McpServerConfig, McpTransport } from './mcp';
 import type { TrackingRuntimeType } from '../analytics/public-params.js';
+import type {
+  TrackingRunFailureCategory,
+  TrackingRunFailureUserAction,
+} from '../analytics/events.js';
 
 export type ChatRole = 'user' | 'assistant';
 export type ChatSessionMode = 'design' | 'chat';
@@ -341,6 +345,18 @@ export interface ChatRunStatusResponse {
   signal?: string | null;
   error?: string | null;
   errorCode?: string | null;
+  /** Structured failure classification the daemon derives at run terminal
+   *  (see `apps/daemon/src/run-failure-classification.ts`). The frontend
+   *  renders the unified failure card — human-readable reason + CTA +
+   *  collapsible raw error — off these instead of the bare `errorCode`.
+   *  Null/absent on success and on explicitly non-failure terminal states.
+   *  `failureCategory: 'user_cancel'` marks an intentional cancel and should
+   *  render as neutral, not as a red error. */
+  failureCategory?: TrackingRunFailureCategory | null;
+  /** Recommended primary user action for the failure above (retry / login /
+   *  recharge / switch_model / reduce_context / install_cli / fix_config /
+   *  none). Drives the failure card's CTA. Paired with `failureCategory`. */
+  userAction?: TrackingRunFailureUserAction | null;
   /** True when this terminal failure can be recovered by resuming the agent's
    *  existing CLI session (a transient upstream drop / inactivity timeout on a
    *  session-resuming runtime), rather than only restarting from scratch. The

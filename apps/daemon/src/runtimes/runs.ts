@@ -8,6 +8,8 @@ import {
   summarizeRunToolBundle,
 } from '../run-tool-bundle.js';
 import { projectWorkspaceProvenance } from '../workspace-contract.js';
+import { runResultFromStatus, deriveRunErrorCode } from '../run-result.js';
+import { classifyRunFailure } from '../run-failure-classification.js';
 
 export const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
 
@@ -85,6 +87,14 @@ export function createChatRunService({
       signal: null,
       error: null,
       errorCode: null,
+      // Structured failure classification, populated once at terminal by
+      // finish(). `failureClassification` keeps the full shape so the
+      // run_finished analytics path can reuse it instead of re-classifying
+      // (single source of truth, no status/telemetry drift); the two outward
+      // fields are mirrored onto the status body for the frontend card.
+      failureClassification: null,
+      failureCategory: null,
+      userAction: null,
       cancelRequested: false,
       retryRestartTimer: null,
       stdinOpen: false,
@@ -186,6 +196,8 @@ export function createChatRunService({
     signal: run.signal,
     error: run.error ?? null,
     errorCode: run.errorCode ?? null,
+    failureCategory: run.failureCategory ?? null,
+    userAction: run.userAction ?? null,
     resumable: run.resumable ?? false,
     eventsLogPath: run.eventsLogPath ?? null,
     workspace: run.workspace ?? projectWorkspaceProvenance(run.projectMetadata),
@@ -201,7 +213,35 @@ export function createChatRunService({
     run.exitCode = code;
     run.signal = signal;
     run.updatedAt = Date.now();
-    emit(run, 'end', { code, signal, status, resumable: run.resumable ?? false });
+    // Classify the failure exactly once, here at the single terminal funnel,
+    // so the result is on the run object before the `end` event and waiter
+    // status bodies go out. `classifyRunFailure` is pure and returns
+    // undefined for successful runs (failureCategory then stays null).
+    const analyticsStatus = {
+      status: run.status,
+      errorCode: run.errorCode ?? null,
+      exitCode: run.exitCode ?? null,
+      signal: run.signal ?? null,
+    };
+    const derivedErrorCode = deriveRunErrorCode(analyticsStatus);
+    const failure = classifyRunFailure({
+      result: runResultFromStatus(run.status),
+      status: { ...analyticsStatus, error: run.error ?? null },
+      ...(derivedErrorCode ? { errorCode: derivedErrorCode } : {}),
+      agentId: run.agentId,
+      events: run.events,
+    });
+    run.failureClassification = failure ?? null;
+    run.failureCategory = failure?.failure_category ?? null;
+    run.userAction = failure?.user_action ?? null;
+    emit(run, 'end', {
+      code,
+      signal,
+      status,
+      resumable: run.resumable ?? false,
+      failureCategory: run.failureCategory,
+      userAction: run.userAction,
+    });
     for (const sse of run.clients) sse.end();
     run.clients.clear();
     for (const waiter of run.waiters) waiter(statusBody(run));
