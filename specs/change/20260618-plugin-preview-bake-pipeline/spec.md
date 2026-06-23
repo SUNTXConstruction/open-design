@@ -205,10 +205,19 @@ contract everything else (coupling, GC safety, rollback) rests on.
 A new `pull_request` job that runs **only when `head.repo.full_name ==
 github.repository`** (same-repo branches have secrets; forks do not):
 
-- Bake only the changed plugins, upload clips to the single R2 prefix, and
-  **commit the manifest update into the author's branch** (push back to the PR
-  head). The manifest change now rides with the code change in the same PR and
-  merges/ reverts atomically.
+- **Bake scope follows the invalidation boundary, not just the touched plugin
+  files** (raised by @mrcfps). The selection rule:
+  - A PR that touches only `plugins/_official/<id>/**` bakes **those plugin ids**.
+  - A PR that changes the bake recipe — `scripts/bake-plugin-previews.mjs`, a
+    `BAKE_VERSION` bump, or another shared bake input — invalidates **all 125
+    fingerprints**, so it forces a **full pre-merge bake** and updates the whole
+    manifest **in the same author PR**. Limiting it to plugin-file changes would
+    leave most entries stale until a detached post-merge PR, defeating the
+    coupling goal. (A full bake here is the same cost as the release/nightly full
+    bake — evaluate all, re-render only the changed fingerprints.)
+- Upload clips to the single R2 prefix, and **commit the manifest update into the
+  author's branch** (push back to the PR head). The manifest change now rides
+  with the code change in the same PR and merges/reverts atomically.
 - **Loop guard (an explicit guard is REQUIRED — the path filter does not break
   the loop).** On `pull_request`, the workflow's `paths` filter is evaluated
   against the **PR's cumulative changed files**, not just the latest commit. The
@@ -222,10 +231,16 @@ github.repository`** (same-repo branches have secrets; forks do not):
     not the latest commit author — on a same-repo branch it stays the contributor
     even after the bot pushes the manifest commit, so it is the **wrong** field
     (caught in review — thanks @PerishCode, @mrcfps). Check the triggering head
-    commit instead, e.g. after checkout `test "$(git log -1 --format='%ae'
-    ${{ github.event.pull_request.head.sha }})" != "$BAKE_BOT_EMAIL"` (the bake
-    push already sets `git config user.email "bot@open-design.ai"`), or compare
-    `github.actor` only if the bake push token carries a stable bot identity.
+    commit instead — but the head SHA must be present locally first: a default
+    `actions/checkout` on `pull_request` checks out the **merge ref** with
+    shallow history, so `head.sha` is not guaranteed to exist (raised by
+    @PerishCode). Either `actions/checkout` with `ref: ${{
+    github.event.pull_request.head.sha }}` (and enough `fetch-depth`), or an
+    explicit `git fetch origin ${{ github.event.pull_request.head.sha }}` before
+    the check, then `test "$(git log -1 --format='%ae' ${{
+    github.event.pull_request.head.sha }})" != "$BAKE_BOT_EMAIL"` (the bake push
+    already sets `git config user.email "bot@open-design.ai"`). `github.actor` is
+    an alternative only if the bake push token carries a stable bot identity.
   - **compute the manifest diff and only commit when a `previews` entry actually
     changed** (no-op-diff guard — same helper as the `generatedAt` fix), so a
     re-run that produces an identical manifest is a no-op and commits nothing.
