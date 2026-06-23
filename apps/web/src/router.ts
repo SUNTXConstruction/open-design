@@ -96,13 +96,10 @@ export function parseRoute(pathname: string): Route {
     return { kind: 'home', view: 'design-systems' };
   }
   if (parts[0] === 'brands') {
-    // The Brands tab shows everything inline in its preview panel; there is no
-    // separate detail view. A `/brands/:id` deep-link just preselects which
-    // brand the inline preview renders.
-    if (parts[1]) {
-      return { kind: 'home', view: 'brands', brandId: decodeURIComponent(parts[1]) };
-    }
-    return { kind: 'home', view: 'brands' };
+    // Brands merged into Design systems: a brand is a `user:<id>` design system
+    // and extraction now starts from the design-system create wizard. Legacy
+    // `/brands` and `/brands/:id` deep-links redirect onto the unified tab.
+    return { kind: 'home', view: 'design-systems' };
   }
   if (parts[0] === 'automations' || parts[0] === 'tasks') {
     return { kind: 'home', view: 'tasks' };
