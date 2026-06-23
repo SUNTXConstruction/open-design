@@ -902,6 +902,8 @@ export interface Dict {
 
   // Entry home
   'homeHero.title': string;
+  'homeHero.startWithTemplate': string;
+  'homeHero.startBlankProject': string;
   'homeHero.templatesScrollHint': string;
   'homeHero.templatesCollapse': string;
   'homeHero.subtitlePrefix': string;
@@ -994,8 +996,6 @@ export interface Dict {
   'homeHero.chip.imageNext': string;
   'homeHero.chip.videoNext': string;
   'homeHero.chip.audioNext': string;
-  'homeHero.openAsProject': string;
-  'homeHero.openAsProjectHint': string;
   'homeWorkingDir.trigger': string;
   'homeWorkingDir.pick': string;
   'homeWorkingDir.replace': string;

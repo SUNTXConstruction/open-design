@@ -19,6 +19,7 @@ import {
   localizeDesignSystemSummary,
 } from '../i18n/content';
 import { fetchDesignSystemPreview } from '../providers/registry';
+import { navigate } from '../router';
 import { useBrandsByDesignSystemId } from '../runtime/brands';
 import { BrandPreviewCard } from './BrandPreviewCard';
 import { Icon } from './Icon';
@@ -228,6 +229,19 @@ export function DesignSystemPicker({
     selectDesignSystem(id);
   };
 
+  // Clear: reset the search query and deselect any chosen system (back to "No
+  // design system") without closing, so the user can keep browsing. Create:
+  // jump to the standalone design-system creation page, closing the popover.
+  const clearSelection = () => {
+    setQuery('');
+    onChange(null);
+    inputRef.current?.focus();
+  };
+  const createDesignSystem = () => {
+    setOpen(false);
+    navigate({ kind: 'design-system-create' });
+  };
+
   // The trigger shows a neutral palette icon rather than a few swatches: a 3-dot
   // slice of a system's palette often grabs only its neutrals (background/ink)
   // and drops the brand accent, so the pill read as a different colour scheme
@@ -260,6 +274,23 @@ export function DesignSystemPicker({
                 placeholder={t('designSystemPicker.searchCompactPlaceholder')}
                 data-testid="project-ds-picker-search"
               />
+              <button
+                type="button"
+                className="project-ds-picker-action"
+                data-testid="project-ds-picker-clear"
+                onClick={clearSelection}
+              >
+                {t('common.clear')}
+              </button>
+              <button
+                type="button"
+                className="project-ds-picker-action project-ds-picker-action--primary"
+                data-testid="project-ds-picker-create"
+                onClick={createDesignSystem}
+              >
+                <Icon name="plus" size={12} strokeWidth={2} />
+                <span>{t('common.create')}</span>
+              </button>
             </div>
             <div className="project-ds-picker-body">
               <div className="project-ds-picker-list" role="listbox">

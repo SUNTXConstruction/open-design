@@ -14,6 +14,7 @@ import type {
   McpServerConfig,
 } from '@open-design/contracts';
 import { useI18n, useT } from '../i18n';
+import { LIBRARY_UI_VISIBLE } from '../features/libraryUi';
 import { ComposerPluginPreview } from './ComposerPluginPreview';
 import { localizePluginTitle } from './plugins-home/localization';
 import { resolveFlyoutSide } from './composer-flyout-placement';
@@ -408,7 +409,7 @@ export function ComposerPlusMenu({
             />
             <span>{t('chat.attachAria')}</span>
           </button>
-          {onSelectFromLibrary ? (
+          {LIBRARY_UI_VISIBLE && onSelectFromLibrary ? (
             <button
               type="button"
               role="menuitem"

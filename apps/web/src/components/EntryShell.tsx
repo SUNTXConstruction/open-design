@@ -148,6 +148,7 @@ import { closeAmrActivationWindowBestEffort } from './AmrLoginPill';
 import { AnimatePresence } from 'motion/react';
 import { smoothScrollToTop } from '../utils/smoothScrollToTop';
 import { summarizeProjectNameFromPrompt } from '../utils/projectName';
+import { LIBRARY_UI_VISIBLE } from '../features/libraryUi';
 import {
   providerModelsCacheKey,
   type ProviderModelsCache,
@@ -741,6 +742,22 @@ export function EntryShell({
       onOpenSettings={onOpenSettings}
     />
   );
+  const homeExecutionSwitcher = (
+    <InlineModelSwitcher
+      compact
+      config={config}
+      agents={agents}
+      providerModelsCache={activeProviderModelsCache}
+      onProviderModelsCacheChange={activeSetProviderModelsCache}
+      daemonLive={daemonLive}
+      onModeChange={onModeChange}
+      onAgentChange={onAgentChange}
+      onAgentModelChange={onAgentModelChange}
+      onApiProtocolChange={onApiProtocolChange}
+      onApiModelChange={onApiModelChange}
+      onOpenSettings={onOpenSettings}
+    />
+  );
 
   return (
     <div className="entry-shell entry-shell--no-header">
@@ -787,7 +804,7 @@ export function EntryShell({
                   </>
                 ) : null}
               </a>
-              {executionSwitcher}
+              {view === 'home' ? null : executionSwitcher}
               <button
                 type="button"
                 className="use-everywhere-chip od-tooltip"
@@ -841,6 +858,7 @@ export function EntryShell({
                 skillsLoading={skillsLoading}
                 connectors={connectors}
                 promptTemplates={promptTemplates}
+                executionSwitcher={view === 'home' ? homeExecutionSwitcher : undefined}
               />
             </div>
             <div data-testid="entry-view-projects" data-active={view === 'projects' ? 'true' : 'false'} {...inactiveViewProps(view === 'projects')}>
@@ -902,14 +920,16 @@ export function EntryShell({
                 </div>
               )}
             </div>
-            <div data-testid="entry-view-library" data-active={view === 'library' ? 'true' : 'false'} {...inactiveViewProps(view === 'library')}>
-              <LibrarySection
-                active={view === 'library'}
-                onOpenProject={(projectId, fileName) =>
-                  navigate({ kind: 'project', projectId, conversationId: null, fileName: fileName ?? null })
-                }
-              />
-            </div>
+            {LIBRARY_UI_VISIBLE ? (
+              <div data-testid="entry-view-library" data-active={view === 'library' ? 'true' : 'false'} {...inactiveViewProps(view === 'library')}>
+                <LibrarySection
+                  active={view === 'library'}
+                  onOpenProject={(projectId, fileName) =>
+                    navigate({ kind: 'project', projectId, conversationId: null, fileName: fileName ?? null })
+                  }
+                />
+              </div>
+            ) : null}
             <div data-testid="entry-view-brands" data-active={view === 'brands' ? 'true' : 'false'} {...inactiveViewProps(view === 'brands')}>
               <BrandsTab
                 onApplyDesignSystem={onChangeDefaultDesignSystem}

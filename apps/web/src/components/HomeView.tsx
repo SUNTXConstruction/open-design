@@ -1083,105 +1083,20 @@ export function HomeView({
     focusPromptAtEnd();
   }
 
-  // "Open as project" (one-click remix). Instead of seeding the composer and
-  // waiting for the user to press Send, we resolve the run-facing payload here
-  // and submit it directly — `onSubmit` (handlePluginLoopSubmit in EntryShell)
-  // creates the project and auto-sends the first message, so the user lands
-  // straight inside an editable, running project. Mirrors the field set of
-  // `submit()` minus the inline-context plumbing, which a one-click open never
-  // carries.
-  function openAsProject(opts: {
-    prompt: string;
-    projectKind: ProjectKind;
-    projectMetadata: ProjectMetadata | null;
-    pluginId: string | null;
-    pluginType?: string | null;
-    pluginTitle?: string | null;
-    appliedPluginSnapshotId?: string | null;
-    pluginInputs: Record<string, unknown>;
-  }) {
-    onSubmit({
-      prompt: opts.prompt,
-      pluginId: opts.pluginId,
-      pluginType: opts.pluginType ?? (opts.pluginId ? 'official' : null),
-      skillId: null,
-      appliedPluginSnapshotId: opts.appliedPluginSnapshotId ?? null,
-      pluginTitle: opts.pluginTitle ?? null,
-      taskKind: null,
-      pluginInputs: opts.pluginInputs,
-      projectKind: opts.projectKind,
-      projectMetadata: opts.projectMetadata,
-      designSystemId,
-      contextPlugins: [],
-      contextMcpServers: [],
-      contextConnectors: [],
-      attachments: stagedFiles,
-      ...(workingDir ? { workingDir } : {}),
-      ...(workingDirToken ? { workingDirToken } : {}),
-      conversationMode: sessionMode,
-      ...(() => {
-        if (!examplePromptInfoRef.current) return {};
-        const key = 'od:example-prompt-used';
-        if (localStorage.getItem(key)) return {};
-        localStorage.setItem(key, '1');
-        return { examplePromptContext: examplePromptInfoRef.current };
-      })(),
-    });
-  }
-
-  async function openExampleAsProject(
-    record: InstalledPluginRecord,
-    chipId: string,
-    promptText: string,
-  ) {
+  // "…or start a blank project": create an empty project directly — no dialog,
+  // no design system, template, prompt, or plugin — and enter it.
+  async function startBlankProject() {
     setError(null);
-    const action = findChip(chipId)?.action;
-    let projectKind: ProjectKind = 'prototype';
-    let baseMetadata: ProjectMetadata | null = null;
-    if (action && (action.kind === 'apply-scenario' || action.kind === 'apply-figma-migration')) {
-      projectKind = action.projectKind;
-      baseMetadata = action.projectMetadata ?? null;
+    try {
+      const { project } = await createProject({
+        name: t('common.untitled'),
+        skillId: null,
+        designSystemId: null,
+      });
+      onOpenProject(project.id);
+    } catch {
+      setError('Could not create a blank project. Make sure the daemon is reachable.');
     }
-    const inputFields = record.manifest?.od?.inputs ?? [];
-    const inputs = hydratePluginInputs(
-      inputFields,
-      withHomeDesignSystemDefault(undefined, inputFields, selectedDesignSystemTitle),
-    );
-    const result = await applyPlugin(record.id, { locale, inputs });
-    if (!result) {
-      setError(`Failed to open ${record.title} as a project. Make sure the daemon is reachable.`);
-      return;
-    }
-    openAsProject({
-      prompt: promptText.trim(),
-      projectKind,
-      projectMetadata: homeCreateProjectMetadata(projectKind, inputs, baseMetadata),
-      pluginId: record.id,
-      pluginType: record.marketplaceTrust ?? 'official',
-      pluginTitle: record.title,
-      appliedPluginSnapshotId: result.appliedPlugin?.snapshotId ?? null,
-      pluginInputs: stripArtifactFooterInputs(inputs),
-    });
-  }
-
-  function openPromptAsProject(promptText: string, chipId: string) {
-    setError(null);
-    const action = findChip(chipId)?.action;
-    let projectKind: ProjectKind = 'other';
-    let baseMetadata: ProjectMetadata | null = null;
-    if (action && (action.kind === 'apply-scenario' || action.kind === 'apply-figma-migration')) {
-      projectKind = action.projectKind;
-      baseMetadata = action.projectMetadata ?? null;
-    }
-    const trimmed = promptText.trim();
-    if (!trimmed) return;
-    openAsProject({
-      prompt: trimmed,
-      projectKind,
-      projectMetadata: homeCreateProjectMetadata(projectKind, { prompt: trimmed }, baseMetadata),
-      pluginId: sessionMode === 'design' ? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID : null,
-      pluginInputs: { prompt: trimmed },
-    });
   }
 
   function removePluginContext(pluginId: string) {
@@ -1848,8 +1763,6 @@ export function HomeView({
         }
         onPickPlugin={(record, nextPrompt) => addPluginContext(record, nextPrompt)}
         onPickExamplePlugin={useExamplePlugin}
-        onDuplicateExamplePlugin={openExampleAsProject}
-        onDuplicatePromptExample={openPromptAsProject}
         onPickSkill={useSkill}
         onPickMcp={useMcpServer}
         onPickConnector={useConnector}
@@ -1871,6 +1784,7 @@ export function HomeView({
           setWorkingDirToken(null);
         }}
         onExamplePromptStatusChange={handleExamplePromptStatusChange}
+        onStartBlankProject={startBlankProject}
         executionSwitcher={executionSwitcher}
       />
 

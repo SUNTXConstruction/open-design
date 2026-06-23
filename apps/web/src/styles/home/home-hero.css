@@ -900,14 +900,24 @@
 }
 .home-hero__execution-switcher .inline-switcher {
   min-width: 0;
-  max-width: 48px;
+  width: 58px;
+  max-width: 58px;
 }
 .home-hero__execution-switcher .inline-switcher__chip {
-  height: 30px;
-  max-width: 48px;
-  padding: 0 7px;
+  width: 58px;
+  height: 32px;
+  max-width: 58px;
+  justify-content: space-between;
+  padding: 0 8px 0 9px;
   gap: 4px;
   border-radius: var(--radius-sm);
+}
+.home-hero__execution-switcher .inline-switcher__chip-icon {
+  width: 20px;
+  height: 20px;
+}
+.home-hero__execution-switcher .inline-switcher__chip-chevron {
+  flex: 0 0 auto;
 }
 .home-hero__foot-right .session-mode-toggle {
   height: 32px;
@@ -927,8 +937,8 @@
   white-space: nowrap;
 }
 .home-hero__execution-switcher .inline-switcher__popover {
-  right: auto;
-  left: 0;
+  right: 0;
+  left: auto;
   z-index: 1503;
 }
 .home-hero__execution-switcher .inline-switcher__agent-grid {
@@ -2435,8 +2445,8 @@
   }
   .home-hero__execution-switcher .inline-switcher,
   .home-hero__execution-switcher .inline-switcher__chip {
-    width: auto;
-    max-width: 48px;
+    width: 58px;
+    max-width: 58px;
   }
 }
 
@@ -2465,18 +2475,133 @@
    "what happens next" hint. Layers over the flat `.home-hero__type-tab`
    pill base so existing disabled/pending/attention states keep working.
    ------------------------------------------------------------ */
-.home-hero__type-tabs.home-hero__scenario-cards {
+/* Positioning context for the rail so the edge auto-scroll zones can anchor to
+   the visible rail box (not the full page width). Carries the centering and
+   max-width the scroll container used to own. */
+/* Template starter block: a "Start with a template…" caption above the
+   scenario-card rail, and a "…or start a blank project" escape hatch below it.
+   The section is one flex child of the centered hero column. */
+.home-hero__template-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.home-hero__template-heading {
+  padding: 0 2px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+}
+.home-hero__blank-project {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    color 120ms var(--ease-out),
+    background-color 120ms var(--ease-out);
+}
+.home-hero__blank-project:hover,
+.home-hero__blank-project:focus-visible {
+  outline: none;
+  color: var(--text-strong);
+  background: var(--bg-subtle);
+}
+.home-hero__blank-project svg {
+  opacity: 0.7;
+  transition: transform 120ms var(--ease-out);
+}
+.home-hero__blank-project:hover svg {
+  transform: translateX(2px);
+}
+.home-hero__scenario-cards-wrap {
+  position: relative;
   max-width: min(900px, 100%);
+  margin: 2px auto 0;
+}
+.home-hero__type-tabs.home-hero__scenario-cards {
+  width: 100%;
   flex-wrap: nowrap;
   justify-content: safe center;
   align-items: stretch;
   gap: 10px;
-  margin: 2px auto 0;
   padding: 2px 12px 10px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
   scrollbar-width: thin;
+}
+
+/* Edge hover zones: hovering an edge auto-scrolls the rail in that direction so
+   the cards stay reachable without a trackpad or horizontal mouse-wheel. Each
+   zone is only visible/interactive when there is content to scroll toward
+   (toggled via data-active). */
+.home-hero__rail-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  width: 60px;
+  z-index: 2;
+  color: var(--text-muted);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms var(--ease-out);
+}
+.home-hero__rail-edge[data-active='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.home-hero__rail-edge:hover .home-hero__rail-edge-icon {
+  color: var(--accent);
+  transform: scale(1.1);
+}
+.home-hero__rail-edge-icon {
+  transition:
+    transform 160ms var(--ease-out),
+    color 160ms var(--ease-out);
+}
+.home-hero__rail-edge--left {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 8px;
+  cursor: w-resize;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--bg-app) 92%, transparent),
+    transparent
+  );
+}
+.home-hero__rail-edge--right {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 8px;
+  cursor: e-resize;
+  background: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--bg-app) 92%, transparent),
+    transparent
+  );
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-hero__rail-edge,
+  .home-hero__rail-edge-icon {
+    transition: none;
+  }
 }
 
 .home-hero__scenario-card.home-hero__type-tab {
@@ -2491,7 +2616,6 @@
   background: var(--bg-panel);
   text-align: left;
   overflow: hidden;
-  scroll-snap-align: start;
 }
 .home-hero__scenario-card.home-hero__type-tab:hover:not(:disabled) {
   transform: translateY(-2px);
@@ -2516,12 +2640,13 @@
   );
   border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
-.home-hero__scenario-card-icon {
-  opacity: 0.92;
+/* Illustrative intent thumbnail (ScenarioArt). A small hover lift on the art
+   keeps the card feeling responsive now that the hint no longer animates. */
+.home-hero__scenario-art-svg {
   transition: transform 160ms var(--ease-out);
 }
-.home-hero__scenario-card:hover:not(:disabled) .home-hero__scenario-card-icon {
-  transform: scale(1.08);
+.home-hero__scenario-card:hover:not(:disabled) .home-hero__scenario-art-svg {
+  transform: scale(1.05);
 }
 .home-hero__scenario-card-body {
   display: flex;
@@ -2546,105 +2671,10 @@
   white-space: normal;
 }
 
-/* The "what happens next" line stays collapsed so the card reads clean, then
-   expands on hover/focus to tell the user how the pick will be consumed. */
-.home-hero__scenario-card-hint {
-  overflow: hidden;
-  max-height: 0;
-  margin: 0 11px;
-  opacity: 0;
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.35;
-  text-align: left;
-  white-space: normal;
-  transition:
-    max-height 200ms var(--ease-out),
-    opacity 160ms var(--ease-out),
-    margin-bottom 200ms var(--ease-out);
-}
-.home-hero__scenario-card:hover:not(:disabled) .home-hero__scenario-card-hint,
-.home-hero__scenario-card:focus-visible .home-hero__scenario-card-hint {
-  max-height: 76px;
-  margin-bottom: 11px;
-  opacity: 1;
-}
 @media (prefers-reduced-motion: reduce) {
   .home-hero__scenario-card.home-hero__type-tab,
-  .home-hero__scenario-card-icon,
-  .home-hero__scenario-card-hint {
+  .home-hero__scenario-art-svg {
     transition: none;
   }
 }
 
-/* ------------------------------------------------------------
-   "Open as project" — one-click remix on example cards. Revealed on
-   card hover/focus so it never competes with the example content.
-   ------------------------------------------------------------ */
-.home-hero__example-cell {
-  position: relative;
-  display: flex;
-  min-width: 0;
-}
-.home-hero__example-cell .home-hero__prompt-example {
-  width: 100%;
-}
-.home-hero__example-open-project {
-  appearance: none;
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 9px;
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--bg-panel) 92%, var(--accent-tint));
-  color: var(--accent);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 140ms var(--ease-out),
-    transform 140ms var(--ease-out),
-    background-color 140ms var(--ease-out),
-    color 140ms var(--ease-out),
-    border-color 140ms var(--ease-out);
-}
-.home-hero__example-open-project--preset {
-  top: 10px;
-  left: 10px;
-  right: auto;
-  bottom: auto;
-}
-.home-hero__example-cell:hover .home-hero__example-open-project,
-.home-hero__example-cell:focus-within .home-hero__example-open-project,
-.home-hero__plugin-preset-cell:hover .home-hero__example-open-project,
-.home-hero__plugin-preset-cell:focus-within .home-hero__example-open-project {
-  opacity: 1;
-  transform: none;
-}
-.home-hero__example-open-project:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--bg-panel);
-  border-color: var(--accent);
-}
-.home-hero__example-open-project:focus-visible {
-  outline: none;
-  opacity: 1;
-  transform: none;
-  box-shadow: 0 0 0 3px var(--accent-tint);
-}
-.home-hero__example-open-project:disabled {
-  cursor: not-allowed;
-  opacity: 0;
-  pointer-events: none;
-}

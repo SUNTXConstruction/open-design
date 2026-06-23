@@ -9,6 +9,7 @@
 
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -39,9 +40,11 @@ import {
 } from '../analytics/events';
 import {
   chipsForGroup,
+  orderedCreateChips,
   type ChipGroup,
   type HomeHeroChip,
 } from './home-hero/chips';
+import { ScenarioArt } from './home-hero/ScenarioArt';
 import {
   isSubChipParent,
   subChipsForChip,
@@ -181,11 +184,6 @@ interface Props {
   submitting?: boolean;
   onPickPlugin: (record: InstalledPluginRecord, nextPrompt: string | null) => void;
   onPickExamplePlugin?: (record: InstalledPluginRecord, chipId: string, promptText: string) => void;
-  // "Open as project" (one-click remix): create + enter a project seeded from
-  // the example, skipping the type-then-send round trip. Omit to hide the
-  // secondary action on the example cards.
-  onDuplicateExamplePlugin?: (record: InstalledPluginRecord, chipId: string, promptText: string) => void;
-  onDuplicatePromptExample?: (promptText: string, chipId: string) => void;
   onPickSkill?: (skill: SkillSummary, nextPrompt: string | null) => void;
   onPickMcp?: (server: McpServerConfig, nextPrompt: string) => void;
   onPickConnector?: (connector: ConnectorDetail, nextPrompt: string) => void;
@@ -199,6 +197,9 @@ interface Props {
   onSelectRecentWorkingDir?: (dir: string) => void;
   onClearWorkingDir?: () => void;
   onExamplePromptStatusChange?: (info: ExamplePromptInfo | null) => void;
+  // "…or start a blank project" — creates an empty project directly (no dialog,
+  // no design system / template / prompt) and enters it. Omit to hide the link.
+  onStartBlankProject?: () => void;
   executionSwitcher?: ReactNode;
 }
 
@@ -298,8 +299,6 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     submitting = false,
     onPickPlugin,
     onPickExamplePlugin = () => undefined,
-    onDuplicateExamplePlugin,
-    onDuplicatePromptExample,
     onPickSkill = () => undefined,
     onPickMcp = () => undefined,
     onPickConnector = () => undefined,
@@ -313,6 +312,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     onSelectRecentWorkingDir,
     onClearWorkingDir,
     onExamplePromptStatusChange,
+    onStartBlankProject,
     executionSwitcher,
   },
   ref,
@@ -682,6 +682,10 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     const closeOnPointer = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Node && shortcutsMenuRef.current?.contains(target)) return;
+      // The dropdown is portaled to <body>, so it's outside shortcutsMenuRef;
+      // recognize it explicitly or a click on a menu item would close the menu
+      // before the item's handler runs.
+      if (target instanceof Element && target.closest('[data-shortcuts-panel]')) return;
       setShortcutsOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -940,45 +944,6 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
       brief: briefForPluginPreset(record, chipId),
     });
     onPickExamplePlugin(record, chipId, promptText);
-  }
-
-  // "Open as project": skip the type-then-send round trip and go straight into
-  // an editable project seeded from the example. Mirrors the example pick's
-  // analytics (a distinct `element`) and records the example brief so the new
-  // project still carries the curated context.
-  function openExamplePluginAsProject(record: InstalledPluginRecord, chipId: string, promptText: string) {
-    if (!onDuplicateExamplePlugin) return;
-    trackHomeChatComposerClick(analytics.track, {
-      page_name: 'home',
-      area: 'chat_composer',
-      element: 'example_open_project',
-      chip_id: chipId,
-      plugin_id: record.sourceMarketplaceEntryName ?? record.id,
-      plugin_type: record.marketplaceTrust ?? 'official',
-    });
-    onExamplePromptStatusChange?.({
-      title: record.title,
-      artifactType: chipId,
-      brief: briefForPluginPreset(record, chipId),
-    });
-    onDuplicateExamplePlugin(record, chipId, promptText);
-  }
-
-  function openPromptExampleAsProject(example: string) {
-    if (!onDuplicatePromptExample) return;
-    const chipId = activeChipId ?? 'prototype';
-    trackHomeChatComposerClick(analytics.track, {
-      page_name: 'home',
-      area: 'chat_composer',
-      element: 'example_open_project',
-      chip_id: chipId,
-    });
-    onExamplePromptStatusChange?.({
-      title: promptExampleChipLabel(example),
-      artifactType: chipId,
-      brief: briefForChipId(chipId),
-    });
-    onDuplicatePromptExample(example, chipId);
   }
 
   // The task-type rail (原型 / 幻灯片 / HyperFrames / 视频 / …). Records which
@@ -1628,30 +1593,46 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
       ) : null}
 
       {activeCreateChip ? null : (
-        <RailGroup
-          group="create"
-          activeChipId={activeChipId}
-          pendingChipId={pendingChipId}
-          pendingPluginId={pendingPluginId}
-          pluginsLoading={pluginsLoading}
-          onPickChip={handlePickTaskChip}
-          variant="tabs"
-          pulseChipId={guidePulseChipId}
-        >
-          <ShortcutsMenu
+        <div className="home-hero__template-section" data-testid="home-hero-template-section">
+          <div className="home-hero__template-heading">
+            {t('homeHero.startWithTemplate')}
+          </div>
+          <RailGroup
+            group="create"
             activeChipId={activeChipId}
             pendingChipId={pendingChipId}
             pendingPluginId={pendingPluginId}
             pluginsLoading={pluginsLoading}
-            open={shortcutsOpen}
-            refNode={shortcutsMenuRef}
-            onOpenChange={setShortcutsOpen}
-            onPickChip={(chip) => {
-              setShortcutsOpen(false);
-              handlePickTaskChip(chip);
-            }}
-          />
-        </RailGroup>
+            onPickChip={handlePickTaskChip}
+            variant="tabs"
+            pulseChipId={guidePulseChipId}
+          >
+            <ShortcutsMenu
+              activeChipId={activeChipId}
+              pendingChipId={pendingChipId}
+              pendingPluginId={pendingPluginId}
+              pluginsLoading={pluginsLoading}
+              open={shortcutsOpen}
+              refNode={shortcutsMenuRef}
+              onOpenChange={setShortcutsOpen}
+              onPickChip={(chip) => {
+                setShortcutsOpen(false);
+                handlePickTaskChip(chip);
+              }}
+            />
+          </RailGroup>
+          {onStartBlankProject ? (
+            <button
+              type="button"
+              className="home-hero__blank-project"
+              data-testid="home-hero-blank-project"
+              onClick={onStartBlankProject}
+            >
+              {t('homeHero.startBlankProject')}
+              <Icon name="chevron-right" size={13} aria-hidden />
+            </button>
+          ) : null}
+        </div>
       )}
 
       {activeSubChips.length > 0 && isSubChipParent(activeChipId) ? (
@@ -1690,7 +1671,6 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
           pendingPluginId={pendingPluginId}
           locale={locale}
           onPick={pickExamplePluginPreset}
-          {...(onDuplicateExamplePlugin ? { onDuplicate: openExamplePluginAsProject } : {})}
           pulseFirstPreset={guidePulseFirstPreset}
         />
       ) : activePromptExamples.length > 0 ? (
@@ -1703,29 +1683,15 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
           </div>
           <div className="home-hero__prompt-examples-grid">
             {activePromptExamples.map((example, index) => (
-              <div key={example} className="home-hero__example-cell">
-                <button
-                  type="button"
-                  className={`home-hero__prompt-example${guidePulseFirstPreset && index === 0 ? ' home-hero__attention-sheen' : ''}`}
-                  data-testid="home-hero-prompt-example"
-                  onClick={() => usePromptExample(example)}
-                >
-                  <span>{example}</span>
-                </button>
-                {onDuplicatePromptExample ? (
-                  <button
-                    type="button"
-                    className="home-hero__example-open-project od-tooltip"
-                    data-testid="home-hero-prompt-example-open"
-                    onClick={() => openPromptExampleAsProject(example)}
-                    title={t('homeHero.openAsProjectHint')}
-                    data-tooltip={t('homeHero.openAsProjectHint')}
-                    data-tooltip-placement="top"
-                  >
-                    {t('homeHero.openAsProject')}
-                  </button>
-                ) : null}
-              </div>
+              <button
+                key={example}
+                type="button"
+                className={`home-hero__prompt-example${guidePulseFirstPreset && index === 0 ? ' home-hero__attention-sheen' : ''}`}
+                data-testid="home-hero-prompt-example"
+                onClick={() => usePromptExample(example)}
+              >
+                <span>{example}</span>
+              </button>
             ))}
           </div>
         </div>
@@ -1774,7 +1740,6 @@ function PluginPromptPresets({
   chipId,
   locale,
   onPick,
-  onDuplicate,
   pendingPluginId,
   plugins,
   pulseFirstPreset = false,
@@ -1783,8 +1748,6 @@ function PluginPromptPresets({
   chipId: string;
   locale: Locale;
   onPick: (record: InstalledPluginRecord, chipId: string, promptText: string) => void;
-  // "Open as project" — present when the host supports one-click duplication.
-  onDuplicate?: (record: InstalledPluginRecord, chipId: string, promptText: string) => void;
   pendingPluginId: string | null;
   plugins: InstalledPluginRecord[];
   // First-run guide: the first card carries the attention sheen.
@@ -1811,7 +1774,6 @@ function PluginPromptPresets({
             disabled={pendingPluginId !== null}
             pulse={pulseFirstPreset && index === 0}
             onPick={onPick}
-            {...(onDuplicate ? { onDuplicate } : {})}
           />
         ))}
       </div>
@@ -1825,7 +1787,6 @@ function PluginPromptPresetCard({
   disabled,
   locale,
   onPick,
-  onDuplicate,
   pending,
   pulse = false,
   record,
@@ -1835,12 +1796,10 @@ function PluginPromptPresetCard({
   disabled: boolean;
   locale: Locale;
   onPick: (record: InstalledPluginRecord, chipId: string, promptText: string) => void;
-  onDuplicate?: (record: InstalledPluginRecord, chipId: string, promptText: string) => void;
   pending: boolean;
   pulse?: boolean;
   record: InstalledPluginRecord;
 }) {
-  const { t } = useI18n();
   // Example-prompt preset tiles are thumbnails too — prefer the cheap baked
   // hover-pan clip when one exists (same as the gallery cards).
   const preview = useMemo(() => inferPluginPreview(record, { preferBaked: true }), [record]);
@@ -1880,22 +1839,6 @@ function PluginPromptPresetCard({
           {localizePluginTitle(locale, record)}
         </span>
       </button>
-      {onDuplicate ? (
-        <button
-          type="button"
-          className="home-hero__example-open-project home-hero__example-open-project--preset od-tooltip"
-          data-testid="home-hero-plugin-preset-open"
-          data-plugin-id={record.id}
-          disabled={disabled}
-          onClick={() => onDuplicate(record, chipId, seedPrompt)}
-          title={t('homeHero.openAsProjectHint')}
-          data-tooltip={t('homeHero.openAsProjectHint')}
-          data-tooltip-placement="top"
-        >
-          <Icon name="plus" size={12} />
-          <span>{t('homeHero.openAsProject')}</span>
-        </button>
-      ) : null}
     </span>
   );
 }
@@ -2730,94 +2673,208 @@ function RailGroup({
   children,
 }: RailGroupProps) {
   const t = useT();
-  const chips = useMemo(() => chipsForGroup(group), [group]);
+  // The inline create rail leads with the slide deck and runs through the core
+  // build scenarios in a fixed order (see `orderedCreateChips`); every other
+  // group renders in catalog order.
+  const chips = useMemo(
+    () => (group === 'create' ? orderedCreateChips() : chipsForGroup(group)),
+    [group],
+  );
   const isTabs = variant === 'tabs';
-  return (
-    <div
-      className={
-        isTabs
-          ? `home-hero__type-tabs home-hero__type-tabs--${group} home-hero__scenario-cards`
-          : `home-hero__rail-group home-hero__rail-group--${group}`
-      }
-      data-testid={isTabs ? 'home-hero-type-tabs' : undefined}
-      data-rail-group={group}
-      role={isTabs ? 'tablist' : undefined}
-      aria-label={isTabs ? t('homeHero.railAria') : undefined}
-    >
-      {chips.map((chip) => {
-        const isActive = activeChipId === chip.id;
-        const isPending = pendingChipId === chip.id;
-        const disabled = pluginsLoading || isPending || pendingPluginId !== null;
-        const nextStep = homeHeroChipTitle(chip, t);
-        // Card variant (the default create rail): an illustrated scenario card
-        // — icon art + title + one-line description — with the "what happens
-        // next" hint revealed on hover. The legacy `rail`/pill markup is kept
-        // for any caller that still asks for `variant="rail"`.
-        if (isTabs) {
-          const description = homeHeroChipDescription(chip.id, t);
-          const cardCls = ['home-hero__type-tab', `home-hero__type-tab--${group}`, 'home-hero__scenario-card'];
-          if (isActive) cardCls.push('is-active');
-          if (isPending) cardCls.push('is-pending');
-          if (pulseChipId === chip.id) cardCls.push('home-hero__attention-sheen');
-          return (
-            <button
-              key={chip.id}
-              type="button"
-              className={cardCls.join(' ')}
-              data-chip-id={chip.id}
-              data-testid={`home-hero-rail-${chip.id}`}
-              onClick={() => onPickChip(chip)}
-              disabled={disabled}
-              role="tab"
-              aria-selected={isActive}
-              title={nextStep}
-            >
-              <span className="home-hero__scenario-card-art" aria-hidden>
-                <Icon name={chip.icon} size={20} className="home-hero__scenario-card-icon home-hero__type-tab-icon" />
-              </span>
-              <span className="home-hero__scenario-card-body">
-                <span className="home-hero__scenario-card-title home-hero__type-tab-label">
-                  {homeHeroChipLabel(chip.id, t)}
-                </span>
-                {description ? (
-                  <span className="home-hero__scenario-card-desc">{description}</span>
-                ) : null}
-              </span>
-              {nextStep ? (
-                <span className="home-hero__scenario-card-hint" aria-hidden>
-                  {nextStep}
-                </span>
-              ) : null}
-            </button>
-          );
+
+  // Edge auto-scroll for the horizontal scenario rail: hovering the left/right
+  // overflow zone nudges the rail along, so users without a trackpad (or
+  // horizontal mouse-wheel) can still reach off-screen cards. Each zone only
+  // turns interactive when there is content to scroll toward in that direction.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const [edges, setEdges] = useState<{ left: boolean; right: boolean }>({
+    left: false,
+    right: false,
+  });
+
+  const stopAutoScroll = useCallback(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
+  const startAutoScroll = useCallback(
+    (direction: 1 | -1) => {
+      stopAutoScroll();
+      const step = () => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const maxScroll = el.scrollWidth - el.clientWidth;
+        el.scrollLeft += direction * 9;
+        const reachedEnd =
+          direction < 0 ? el.scrollLeft <= 0 : el.scrollLeft >= maxScroll;
+        if (reachedEnd) {
+          stopAutoScroll();
+          return;
         }
-        const cls = ['home-hero__rail-chip', `home-hero__rail-chip--${group}`];
-        if (isActive) cls.push('is-active');
-        if (isPending) cls.push('is-pending');
-        if (pulseChipId === chip.id) cls.push('home-hero__attention-sheen');
-        return (
-          <button
-            key={chip.id}
-            type="button"
-            className={cls.join(' ')}
-            data-chip-id={chip.id}
-            data-testid={`home-hero-rail-${chip.id}`}
-            onClick={() => onPickChip(chip)}
-            disabled={disabled}
-            aria-pressed={isActive}
-            title={nextStep}
-          >
-            <Icon
-              name={chip.icon}
-              size={14}
-              className="home-hero__rail-chip-icon"
-            />
-            <span className="home-hero__rail-chip-label">
+        rafRef.current = requestAnimationFrame(step);
+      };
+      rafRef.current = requestAnimationFrame(step);
+    },
+    [stopAutoScroll],
+  );
+
+  // Click on an edge jumps a couple of cards, for users who prefer a discrete
+  // nudge over the hover-hold auto-scroll.
+  const nudge = useCallback((direction: 1 | -1) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * 332, behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    if (!isTabs) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const updateEdges = () => {
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      setEdges({
+        left: el.scrollLeft > 1,
+        right: el.scrollLeft < maxScroll - 1,
+      });
+    };
+    updateEdges();
+    el.addEventListener('scroll', updateEdges, { passive: true });
+    // ResizeObserver is absent in the jsdom test environment; the scroll
+    // listener already keeps edges fresh, so observing is a best-effort extra.
+    const observer =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(updateEdges)
+        : null;
+    observer?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', updateEdges);
+      observer?.disconnect();
+    };
+  }, [isTabs, chips.length]);
+
+  // Cancel any in-flight scroll when the rail unmounts.
+  useEffect(() => stopAutoScroll, [stopAutoScroll]);
+
+  const cards = chips.map((chip) => {
+    const isActive = activeChipId === chip.id;
+    const isPending = pendingChipId === chip.id;
+    const disabled = pluginsLoading || isPending || pendingPluginId !== null;
+    const nextStep = homeHeroChipTitle(chip, t);
+    // Card variant (the default create rail): an illustrated scenario card —
+    // an intent thumbnail (ScenarioArt) + title + one-line description. The
+    // full "what happens next" sentence stays on the native `title` tooltip
+    // instead of an inline line that resized the card on hover. The legacy
+    // `rail`/pill markup is kept for any caller that still asks for `variant="rail"`.
+    if (isTabs) {
+      const description = homeHeroChipDescription(chip.id, t);
+      const cardCls = ['home-hero__type-tab', `home-hero__type-tab--${group}`, 'home-hero__scenario-card'];
+      if (isActive) cardCls.push('is-active');
+      if (isPending) cardCls.push('is-pending');
+      if (pulseChipId === chip.id) cardCls.push('home-hero__attention-sheen');
+      return (
+        <button
+          key={chip.id}
+          type="button"
+          className={cardCls.join(' ')}
+          data-chip-id={chip.id}
+          data-testid={`home-hero-rail-${chip.id}`}
+          onClick={() => onPickChip(chip)}
+          disabled={disabled}
+          role="tab"
+          aria-selected={isActive}
+          title={nextStep}
+        >
+          <span className="home-hero__scenario-card-art" aria-hidden>
+            <ScenarioArt chipId={chip.id} fallbackIcon={chip.icon} />
+          </span>
+          <span className="home-hero__scenario-card-body">
+            <span className="home-hero__scenario-card-title home-hero__type-tab-label">
               {homeHeroChipLabel(chip.id, t)}
             </span>
-          </button>
-        );
-      })}
+            {description ? (
+              <span className="home-hero__scenario-card-desc">{description}</span>
+            ) : null}
+          </span>
+        </button>
+      );
+    }
+    const cls = ['home-hero__rail-chip', `home-hero__rail-chip--${group}`];
+    if (isActive) cls.push('is-active');
+    if (isPending) cls.push('is-pending');
+    if (pulseChipId === chip.id) cls.push('home-hero__attention-sheen');
+    return (
+      <button
+        key={chip.id}
+        type="button"
+        className={cls.join(' ')}
+        data-chip-id={chip.id}
+        data-testid={`home-hero-rail-${chip.id}`}
+        onClick={() => onPickChip(chip)}
+        disabled={disabled}
+        aria-pressed={isActive}
+        title={nextStep}
+      >
+        <Icon
+          name={chip.icon}
+          size={14}
+          className="home-hero__rail-chip-icon"
+        />
+        <span className="home-hero__rail-chip-label">
+          {homeHeroChipLabel(chip.id, t)}
+        </span>
+      </button>
+    );
+  });
+
+  if (isTabs) {
+    return (
+      <div className="home-hero__scenario-cards-wrap">
+        <div
+          ref={scrollRef}
+          className={`home-hero__type-tabs home-hero__type-tabs--${group} home-hero__scenario-cards`}
+          data-testid="home-hero-type-tabs"
+          data-rail-group={group}
+          role="tablist"
+          aria-label={t('homeHero.railAria')}
+        >
+          {cards}
+          {children}
+        </div>
+        <div
+          className="home-hero__rail-edge home-hero__rail-edge--left"
+          data-active={edges.left ? 'true' : undefined}
+          aria-hidden
+          onPointerEnter={() => startAutoScroll(-1)}
+          onPointerLeave={stopAutoScroll}
+          onPointerDown={stopAutoScroll}
+          onClick={() => nudge(-1)}
+        >
+          <Icon name="chevron-left" size={18} className="home-hero__rail-edge-icon" />
+        </div>
+        <div
+          className="home-hero__rail-edge home-hero__rail-edge--right"
+          data-active={edges.right ? 'true' : undefined}
+          aria-hidden
+          onPointerEnter={() => startAutoScroll(1)}
+          onPointerLeave={stopAutoScroll}
+          onPointerDown={stopAutoScroll}
+          onClick={() => nudge(1)}
+        >
+          <Icon name="chevron-right" size={18} className="home-hero__rail-edge-icon" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`home-hero__rail-group home-hero__rail-group--${group}`}
+      data-rail-group={group}
+    >
+      {cards}
       {children}
     </div>
   );
@@ -2938,6 +2995,39 @@ function ShortcutsMenu({
     hasActiveShortcut ? 'is-active' : '',
     hasPendingShortcut ? 'is-pending' : '',
   ].filter(Boolean).join(' ');
+
+  // The trigger lives inside the horizontally-scrolling rail, whose
+  // `overflow-x: auto` also clips vertically — so an in-flow dropdown gets
+  // truncated. Portal the panel to the body with fixed positioning anchored to
+  // the trigger, and keep it aligned as the rail scrolls or the window resizes.
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [panelPos, setPanelPos] = useState<{ top: number; right: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!open) {
+      setPanelPos(null);
+      return;
+    }
+    const update = () => {
+      const el = triggerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setPanelPos({
+        top: Math.round(rect.bottom + 6),
+        right: Math.round(window.innerWidth - rect.right),
+      });
+    };
+    update();
+    window.addEventListener('resize', update);
+    // Capture phase: scroll events don't bubble, so this is how the panel
+    // follows the trigger when the rail itself scrolls.
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
   return (
     <div
       ref={refNode}
@@ -2946,6 +3036,7 @@ function ShortcutsMenu({
       data-rail-group="migrate"
     >
       <button
+        ref={triggerRef}
         type="button"
         className={triggerClass}
         data-testid="home-hero-shortcuts-trigger"
@@ -2958,12 +3049,16 @@ function ShortcutsMenu({
       >
         <Icon name="more-horizontal" size={16} className="home-hero__type-tab-icon" />
       </button>
-      {open ? (
+      {open && panelPos
+        ? createPortal(
         <div
           className="home-hero__shortcut-menu-panel"
           role="menu"
           aria-label={t('homeHero.moreShortcuts')}
           data-testid="home-hero-shortcuts-menu"
+          data-shortcuts-panel=""
+          data-rail-group="migrate"
+          style={{ position: 'fixed', top: panelPos.top, right: panelPos.right }}
         >
           {shortcuts.map((chip) => {
             const isActive = activeChipId === chip.id;
@@ -2988,8 +3083,10 @@ function ShortcutsMenu({
               </button>
             );
           })}
-        </div>
-      ) : null}
+        </div>,
+          document.body,
+        )
+        : null}
     </div>
   );
 }
@@ -3135,6 +3232,40 @@ export function pluginMatchesExampleChip(record: InstalledPluginRecord, chipId: 
   switch (chipId) {
     case 'prototype':
       return has('prototype') || hasPart('web-prototype');
+    case 'wireframe':
+      // Lo-fi / sketch / whiteboard explorations (e.g. wireframe-sketch).
+      return (
+        hasPart('wireframe') ||
+        has('low-fidelity', 'lo-fi-mockup', 'sketch-wireframe', 'whiteboard-sketch', 'hand-drawn')
+      );
+    case 'mobile':
+      // Native mobile app prototypes: iOS / Android phone screens.
+      return (
+        (hasPart('mobile') ||
+          has('ios-app', 'android-app', 'phone-screen', 'app-mockup', 'app-ui')) &&
+        !hasPart('video', 'audio', 'image', 'hyperframes')
+      );
+    case 'document':
+      // Documents: resumes, reports, invoices, papers, briefs, PDFs.
+      return (
+        (has('resume', 'cv', 'invoice', 'document', 'docs', 'report', 'paper') ||
+          hasPart(
+            'resume',
+            'documentation',
+            'invoice',
+            'report',
+            'whitepaper',
+            'academic-paper',
+            'case-report',
+            'meeting-notes',
+            'runbook',
+            'eguide',
+            'letter',
+            'dossier',
+            'memo',
+          )) &&
+        !hasPart('video', 'audio', 'hyperframes', 'deck', 'slides')
+      );
     case 'deck':
       return has('deck', 'slides', 'slide-deck') || hasPart('slide', 'deck');
     case 'hyperframes':

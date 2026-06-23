@@ -321,6 +321,40 @@ export function chipsForGroup(group: ChipGroup): HomeHeroChip[] {
   return HOME_HERO_CHIPS.filter((c) => c.group === group);
 }
 
+// Display order for the inline `create` scenario rail. The composer leads with
+// the slide deck ("Slides") followed by the core build scenarios in
+// decreasing generality (Prototype → Wireframe → Mobile → Document →
+// Animation), then the media scenarios. Brand Kit is intentionally omitted
+// here so it trails the scenario set — it dispatches into the Brand Kit tab
+// rather than seeding a scenario plugin. Any create chip not listed keeps its
+// catalog order after the explicit entries (see `orderedCreateChips`).
+export const CREATE_RAIL_ORDER = [
+  'deck',
+  'prototype',
+  'wireframe',
+  'mobile',
+  'document',
+  'hyperframes',
+  'live-artifact',
+  'image',
+  'video',
+  'audio',
+] as const;
+
+// The `create` chips in rail-display order. Listed ids come first in
+// `CREATE_RAIL_ORDER`; any unlisted create chip (e.g. `create-brand-kit`)
+// trails in catalog order. Reordering through this helper keeps the catalog
+// data table stable while letting the rail lead with the slide deck.
+export function orderedCreateChips(): HomeHeroChip[] {
+  const create = chipsForGroup('create');
+  const listed = CREATE_RAIL_ORDER
+    .map((id) => create.find((c) => c.id === id))
+    .filter((c): c is HomeHeroChip => Boolean(c));
+  const listedIds = new Set<string>(CREATE_RAIL_ORDER);
+  const rest = create.filter((c) => !listedIds.has(c.id));
+  return [...listed, ...rest];
+}
+
 // Helper used by tests + the rail component to pull the chip metadata
 // off a click target without round-tripping through React state.
 export function findChip(id: string): HomeHeroChip | undefined {

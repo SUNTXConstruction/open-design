@@ -5,7 +5,7 @@
 //   - drag & drop  (directory-aware; the parent reads the DataTransfer)
 //   - click to browse
 //   - paste (Cmd/Ctrl+V image/file content from the clipboard)
-//   - "Select from library" — pull existing OD Library assets in
+//   - gated "Select from library" affordance when the Library UI is visible
 //   - a thumbnail grid with remove + click-to-enlarge preview
 //
 // Every staged file is previewable — not just images. The grid renders a
@@ -26,6 +26,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { LIBRARY_UI_VISIBLE } from '../features/libraryUi';
 import { Icon, type IconName } from './Icon';
 import styles from './DesignSystemAssetDropzone.module.css';
 
@@ -39,7 +40,7 @@ interface Props {
   /** Remove one staged file (matched by reference). */
   onRemove: (file: File) => void;
   /** Open the "Select from library" picker. */
-  onSelectFromLibrary: () => void;
+  onSelectFromLibrary?: () => void;
 }
 
 // The preview families we can render meaningfully in-browser. Anything else
@@ -480,18 +481,20 @@ export function DesignSystemAssetDropzone({
         </span>
       </div>
 
-      <div className={styles.alt}>
-        <span className={styles.altText}>or reuse an asset you’ve already saved</span>
-        <button
-          type="button"
-          className={styles.libraryBtn}
-          data-testid="ds-asset-library"
-          onClick={onSelectFromLibrary}
-        >
-          <Icon name="layers-filled" size={14} />
-          Select from library
-        </button>
-      </div>
+      {LIBRARY_UI_VISIBLE && onSelectFromLibrary ? (
+        <div className={styles.alt}>
+          <span className={styles.altText}>or reuse an asset you’ve already saved</span>
+          <button
+            type="button"
+            className={styles.libraryBtn}
+            data-testid="ds-asset-library"
+            onClick={onSelectFromLibrary}
+          >
+            <Icon name="layers-filled" size={14} />
+            Select from library
+          </button>
+        </div>
+      ) : null}
 
       {files.length > 0 ? (
         <ul className={styles.grid} aria-label="Staged assets">

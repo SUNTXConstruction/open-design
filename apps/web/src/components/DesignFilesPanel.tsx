@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAnalytics } from '../analytics/provider';
 import { trackFileManagerClick } from '../analytics/events';
 import { useT } from '../i18n';
+import { LIBRARY_UI_VISIBLE } from '../features/libraryUi';
 import type { Dict } from '../i18n/types';
 import { projectFileUrl, projectRawUrl } from '../providers/registry';
 import { buildSrcdoc } from '../runtime/srcdoc';
@@ -806,7 +807,7 @@ export function DesignFilesPanel({
 
   const fileActions = (
     <div className="df-actions">
-      {onSelectFromLibrary ? (
+      {LIBRARY_UI_VISIBLE && onSelectFromLibrary ? (
         <button
           type="button"
           data-testid="design-files-library-trigger"

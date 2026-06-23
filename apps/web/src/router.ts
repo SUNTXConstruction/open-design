@@ -4,6 +4,7 @@
 // that in the URL is the simplest way to make it deep-linkable.
 
 import { useSyncExternalStore } from 'react';
+import { LIBRARY_UI_VISIBLE } from './features/libraryUi';
 
 // Entry-shell sub-views. The home/project landing renders one of three
 // columns and each sub-view now owns a top-level path so the browser
@@ -107,7 +108,7 @@ export function parseRoute(pathname: string): Route {
   if (parts[0] === 'plugins' && !parts[1]) {
     return { kind: 'home', view: 'plugins' };
   }
-  if (parts[0] === 'library' && !parts[1]) {
+  if (LIBRARY_UI_VISIBLE && parts[0] === 'library' && !parts[1]) {
     return { kind: 'home', view: 'library' };
   }
   if (parts[0] === 'integrations') {
@@ -134,7 +135,7 @@ export function buildPath(route: Route): string {
     if (route.view === 'tasks') return '/automations';
     if (route.view === 'plugins') return '/plugins';
     if (route.view === 'design-systems') return '/design-systems';
-    if (route.view === 'library') return '/library';
+    if (route.view === 'library') return LIBRARY_UI_VISIBLE ? '/library' : '/';
     if (route.view === 'brands') {
       return route.brandId ? `/brands/${encodeURIComponent(route.brandId)}` : '/brands';
     }

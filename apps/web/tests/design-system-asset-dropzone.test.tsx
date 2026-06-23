@@ -13,7 +13,7 @@
 // image. Creation and revocation must be paired in one files-keyed effect.
 
 import { StrictMode } from 'react';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignSystemAssetDropzone } from '../src/components/DesignSystemAssetDropzone';
@@ -68,5 +68,22 @@ describe('DesignSystemAssetDropzone — seeded preview lifecycle', () => {
     // The crux: the URL the thumbnail points at must still be live, not one the
     // StrictMode cleanup already revoked.
     expect(revoked.has(src)).toBe(false);
+  });
+
+  it('does not show the library picker affordance while the Library UI is gated off', () => {
+    const noop = () => {};
+
+    render(
+      <DesignSystemAssetDropzone
+        files={[]}
+        onAddFiles={noop}
+        onDrop={noop}
+        onRemove={noop}
+        onSelectFromLibrary={noop}
+      />,
+    );
+
+    expect(screen.queryByTestId('ds-asset-library')).toBeNull();
+    expect(screen.queryByText(/reuse an asset/i)).toBeNull();
   });
 });

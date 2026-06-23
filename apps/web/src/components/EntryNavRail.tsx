@@ -12,6 +12,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { EntryHelpMenu } from './EntryHelpMenu';
 import { Icon } from './Icon';
 import { useT } from '../i18n';
+import { LIBRARY_UI_VISIBLE } from '../features/libraryUi';
 
 export type EntryView =
   | 'home'
@@ -158,15 +159,17 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
         >
           <Icon name="swatchbook" size={18} />
         </NavButton>
-        <NavButton
-          active={view === 'library'}
-          ariaLabel="Library"
-          tooltip="Library"
-          onClick={() => selectView('library')}
-          testId="entry-nav-library"
-        >
-          <Icon name="layers-filled" size={18} />
-        </NavButton>
+        {LIBRARY_UI_VISIBLE ? (
+          <NavButton
+            active={view === 'library'}
+            ariaLabel="Library"
+            tooltip="Library"
+            onClick={() => selectView('library')}
+            testId="entry-nav-library"
+          >
+            <Icon name="layers-filled" size={18} />
+          </NavButton>
+        ) : null}
         <NavButton
           active={view === 'tasks'}
           ariaLabel={t('entry.navTasks')}
