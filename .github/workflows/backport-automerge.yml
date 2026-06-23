@@ -1,0 +1,93 @@
+name: backport-automerge
+# Auto-merge a clean backport PR once its CI is green — and ping Feishu if its CI fails.
+#
+# release/v* is protected (PR required) but has no required status check and no merge queue,
+# so neither GitHub auto-merge nor enqueuePullRequest applies. Instead we react to ci.yml
+# finishing for a backport-* branch:
+#   - CI success + clean (non-draft) PR  -> squash-merge it (App token, so the push to
+#     release/* re-triggers notify-release-feishu / the nightly).
+#   - CI failure                         -> Feishu ping for manual follow-up.
+#   - conflict (draft PR)                -> left for a human; release-gate blocks the release
+#                                           until it lands.
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  followup:
+    if: ${{ github.repository == 'nexu-io/open-design' && startsWith(github.event.workflow_run.head_branch, 'backport-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Resolve the backport PR for this branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          row="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+                  --json number,baseRefName,isDraft,title \
+                  --jq '[.[] | select(.baseRefName | startswith("release/v"))][0] // empty')"
+          if [ -z "$row" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No open backport PR to release/* for $BRANCH"
+            exit 0
+          fi
+          {
+            echo "found=true"
+            echo "number=$(printf '%s' "$row" | jq -r .number)"
+            echo "base=$(printf '%s' "$row" | jq -r .baseRefName)"
+            echo "draft=$(printf '%s' "$row" | jq -r .isDraft)"
+            echo "title=$(printf '%s' "$row" | jq -r .title)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Auto-merge clean backport on green CI
+        if: ${{ steps.pr.outputs.found == 'true' && steps.pr.outputs.draft == 'false' && github.event.workflow_run.conclusion == 'success' }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          NUM: ${{ steps.pr.outputs.number }}
+          BASE: ${{ steps.pr.outputs.base }}
+        run: |
+          set -euo pipefail
+          echo "CI green — squash-merging clean backport PR #$NUM into $BASE"
+          gh pr merge "$NUM" --repo "$REPO" --squash --delete-branch
+
+      - name: Notify Feishu on failed backport CI
+        if: ${{ steps.pr.outputs.found == 'true' && github.event.workflow_run.conclusion == 'failure' }}
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_RELEASE_WEBHOOK }}
+          FEISHU_SIGN_SECRET: ${{ secrets.FEISHU_RELEASE_SIGN_SECRET }}
+          NUM: ${{ steps.pr.outputs.number }}
+          BASE: ${{ steps.pr.outputs.base }}
+          TITLE: ${{ steps.pr.outputs.title }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          python3 - <<'PY'
+          import os, time, hmac, hashlib, base64, json, urllib.request
+          wh = os.environ.get("FEISHU_WEBHOOK", "")
+          if not wh:
+              raise SystemExit(0)
+          secret = os.environ.get("FEISHU_SIGN_SECRET", "")
+          text = (f"⚠️ backport PR #{os.environ['NUM']} CI 失败（目标 {os.environ['BASE']}）\n"
+                  f"{os.environ.get('TITLE','')}\n需要人工跟进：{os.environ.get('RUN_URL','')}")
+          body = {"msg_type": "text", "content": {"text": text}}
+          if secret:
+              ts = str(int(time.time()))
+              sign = base64.b64encode(hmac.new(f"{ts}\n{secret}".encode(), b"", hashlib.sha256).digest()).decode()
+              body = {"timestamp": ts, "sign": sign, **body}
+          req = urllib.request.Request(wh, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+          print(urllib.request.urlopen(req).read().decode())
+          PY
