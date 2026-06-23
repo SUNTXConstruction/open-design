@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const pl: Dict = {
   'chat.amrCard.switchTitle': 'Wywołanie modelu nieudane — to zadanie jest wstrzymane',
-  'chat.amrCard.switchBody': 'Przełącz się na oficjalną usługę modeli Open Design od Open Design — bez konfigurowania klucza API. Po zalogowaniu, autoryzacji i doładowaniu zadanie zostanie automatycznie ponowione.',
+  'chat.amrCard.switchBody': 'Przełącz się na oficjalną usługę modeli Open Design — bez konfigurowania klucza API. Po zalogowaniu, autoryzacji i doładowaniu zadanie zostanie automatycznie ponowione.',
   'chat.amrCard.chipOfficial': 'Oficjalny hosting',
   'chat.amrCard.chipNoKey': 'Bez klucza API',
   'chat.amrCard.chipAutoRetry': 'Automatyczne ponowienie po zalogowaniu',

@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const fa: Dict = {
   'chat.amrCard.switchTitle': 'فراخوانی مدل ناموفق بود — این اجرا متوقف شد',
-  'chat.amrCard.switchBody': 'به سرویس رسمی مدل Open Design از Open Design سوئیچ کنید — بدون نیاز به تنظیم کلید API. پس از ورود، اعطای دسترسی و شارژ، این اجرا به‌طور خودکار دوباره انجام می‌شود.',
+  'chat.amrCard.switchBody': 'به سرویس رسمی مدل Open Design سوئیچ کنید — بدون نیاز به تنظیم کلید API. پس از ورود، اعطای دسترسی و شارژ، این اجرا به‌طور خودکار دوباره انجام می‌شود.',
   'chat.amrCard.chipOfficial': 'میزبانی رسمی',
   'chat.amrCard.chipNoKey': 'بدون کلید API',
   'chat.amrCard.chipAutoRetry': 'تلاش مجدد خودکار پس از ورود',

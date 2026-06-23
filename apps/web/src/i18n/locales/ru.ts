@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const ru: Dict = {
   'chat.amrCard.switchTitle': 'Не удалось вызвать модель — это выполнение приостановлено',
-  'chat.amrCard.switchBody': 'Переключитесь на официальный сервис моделей Open Design от Open Design — без настройки API-ключа. После входа, авторизации и пополнения это выполнение будет автоматически повторено.',
+  'chat.amrCard.switchBody': 'Переключитесь на официальный сервис моделей Open Design — без настройки API-ключа. После входа, авторизации и пополнения это выполнение будет автоматически повторено.',
   'chat.amrCard.chipOfficial': 'Официальный хостинг',
   'chat.amrCard.chipNoKey': 'Без API-ключа',
   'chat.amrCard.chipAutoRetry': 'Авто-повтор после входа',

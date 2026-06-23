@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const ar: Dict = {
   'chat.amrCard.switchTitle': 'فشل استدعاء النموذج — تم إيقاف هذه المهمة مؤقتًا',
-  'chat.amrCard.switchBody': 'بدِّل إلى خدمة نماذج Open Design الرسمية من Open Design — لا حاجة لإعداد مفتاح API. بعد تسجيل الدخول والتفويض والشحن، ستُعاد محاولة هذه المهمة تلقائيًا.',
+  'chat.amrCard.switchBody': 'بدِّل إلى خدمة نماذج Open Design الرسمية — لا حاجة لإعداد مفتاح API. بعد تسجيل الدخول والتفويض والشحن، ستُعاد محاولة هذه المهمة تلقائيًا.',
   'chat.amrCard.chipOfficial': 'استضافة رسمية',
   'chat.amrCard.chipNoKey': 'بدون مفتاح API',
   'chat.amrCard.chipAutoRetry': 'إعادة المحاولة تلقائيًا بعد تسجيل الدخول',

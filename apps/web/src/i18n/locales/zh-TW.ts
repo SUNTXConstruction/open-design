@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const zhTW: Dict = {
   'chat.amrCard.switchTitle': '模型呼叫失敗，目前任務已暫停',
-  'chat.amrCard.switchBody': '可切換到 Open Design 官方 Open Design 模型服務，無需設定 API Key。完成登入、授權與儲值後，將自動重試目前任務。',
+  'chat.amrCard.switchBody': '可切換到 Open Design 官方模型服務，無需設定 API Key。完成登入、授權與儲值後，將自動重試目前任務。',
   'chat.amrCard.chipOfficial': '官方代管',
   'chat.amrCard.chipNoKey': '無需 API Key',
   'chat.amrCard.chipAutoRetry': '授權後自動重試',

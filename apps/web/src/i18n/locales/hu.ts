@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const hu: Dict = {
   'chat.amrCard.switchTitle': 'Sikertelen modellhívás — ez a futtatás szünetel',
-  'chat.amrCard.switchBody': 'Válts az Open Design hivatalos Open Design modellszolgáltatására — nincs szükség API-kulcs beállítására. Bejelentkezés, engedélyezés és feltöltés után ez a futtatás automatikusan újraindul.',
+  'chat.amrCard.switchBody': 'Válts az Open Design hivatalos modellszolgáltatására — nincs szükség API-kulcs beállítására. Bejelentkezés, engedélyezés és feltöltés után ez a futtatás automatikusan újraindul.',
   'chat.amrCard.chipOfficial': 'Hivatalos szolgáltatás',
   'chat.amrCard.chipNoKey': 'Nincs API-kulcs',
   'chat.amrCard.chipAutoRetry': 'Automatikus újrapróbálkozás bejelentkezés után',

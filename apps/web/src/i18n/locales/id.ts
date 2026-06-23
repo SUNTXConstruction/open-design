@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const id: Dict = {
   'chat.amrCard.switchTitle': 'Panggilan model gagal — proses ini dijeda',
-  'chat.amrCard.switchBody': 'Beralih ke layanan model Open Design resmi Open Design — tanpa perlu mengatur API Key. Setelah masuk, otorisasi, dan isi ulang, proses ini akan dicoba ulang otomatis.',
+  'chat.amrCard.switchBody': 'Beralih ke layanan model resmi Open Design — tanpa perlu mengatur API Key. Setelah masuk, otorisasi, dan isi ulang, proses ini akan dicoba ulang otomatis.',
   'chat.amrCard.chipOfficial': 'Hosting resmi',
   'chat.amrCard.chipNoKey': 'Tanpa API Key',
   'chat.amrCard.chipAutoRetry': 'Coba ulang otomatis setelah masuk',

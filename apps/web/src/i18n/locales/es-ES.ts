@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const esES: Dict = {
   'chat.amrCard.switchTitle': 'Falló la llamada al modelo — esta ejecución está en pausa',
-  'chat.amrCard.switchBody': 'Cambia al servicio oficial de modelos Open Design de Open Design — sin configurar API Key. Tras iniciar sesión, autorizar y recargar, esta ejecución se reintentará automáticamente.',
+  'chat.amrCard.switchBody': 'Cambia al servicio oficial de modelos de Open Design — sin configurar API Key. Tras iniciar sesión, autorizar y recargar, esta ejecución se reintentará automáticamente.',
   'chat.amrCard.chipOfficial': 'Alojamiento oficial',
   'chat.amrCard.chipNoKey': 'Sin API Key',
   'chat.amrCard.chipAutoRetry': 'Reintento automático tras iniciar sesión',

@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const ja: Dict = {
   'chat.amrCard.switchTitle': 'モデル呼び出しに失敗しました — このタスクは一時停止中です',
-  'chat.amrCard.switchBody': 'Open Design 公式の Open Design モデルサービスに切り替えてください — API キーの設定は不要です。サインイン・認可・チャージが完了すると、このタスクは自動で再試行されます。',
+  'chat.amrCard.switchBody': 'Open Design 公式のモデルサービスに切り替えてください — API キーの設定は不要です。サインイン・認可・チャージが完了すると、このタスクは自動で再試行されます。',
   'chat.amrCard.chipOfficial': '公式ホスティング',
   'chat.amrCard.chipNoKey': 'API キー不要',
   'chat.amrCard.chipAutoRetry': 'サインイン後に自動再試行',

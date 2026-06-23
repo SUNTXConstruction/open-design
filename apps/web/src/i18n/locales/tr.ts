@@ -2,7 +2,7 @@ import type { Dict } from '../types';
 
 export const tr: Dict = {
   'chat.amrCard.switchTitle': 'Model çağrısı başarısız oldu — bu çalıştırma duraklatıldı',
-  'chat.amrCard.switchBody': 'Open Design\'ın resmi Open Design model hizmetine geçin — API anahtarı yapılandırması gerekmez. Oturum açma, yetkilendirme ve bakiye yükleme sonrası bu çalıştırma otomatik olarak yeniden denenir.',
+  'chat.amrCard.switchBody': 'Open Design\'ın resmi model hizmetine geçin — API anahtarı yapılandırması gerekmez. Oturum açma, yetkilendirme ve bakiye yükleme sonrası bu çalıştırma otomatik olarak yeniden denenir.',
   'chat.amrCard.chipOfficial': 'Resmi hizmet',
   'chat.amrCard.chipNoKey': 'API anahtarı gerekmez',
   'chat.amrCard.chipAutoRetry': 'Giriş sonrası otomatik yeniden deneme',
